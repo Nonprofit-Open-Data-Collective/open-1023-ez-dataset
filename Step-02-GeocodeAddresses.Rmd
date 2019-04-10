@@ -295,9 +295,9 @@ plot( dat$lon, dat$lat, pch=19, cex=0.5, col=gray(0.5,0.01) )
 
 getwd()
 
-# write.csv( dat, "AllPeopleGeocodes.csv", row.names=F )
+# write.csv( dat, "PEOPLE-GEOCODES.csv", row.names=F )
 
-saveRDS( dat, "AllPeopleGeocodes.rds" )
+saveRDS( dat, "../Data/PEOPLE-GEOCODES.rds" )
 ```
 
 
