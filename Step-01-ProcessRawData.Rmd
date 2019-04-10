@@ -1,0 +1,370 @@
+---
+title: "Process Raw Data"
+output:
+  html_document:
+    theme: united
+    df_print: paged
+    highlight: tango
+    smart: false
+    toc: yes
+    toc_float: yes
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning=F, message=F, fig.width=8)
+```
+
+
+In this first step we will read in all raw data files, and separate them into three separate files:
+
+(1) Data file of nonprofit characteristics.
+(2) File of nonprofit addresses.
+(3) File of managers and board members.
+
+# Packages
+
+```{r}
+library( dplyr )
+library( tidyr )
+library( gender )
+```
+
+
+
+# Load Raw Data
+
+Raw data files were obtained from: 
+
+https://www.irs.gov/charities-non-profits/exempt-organizations-form-1023ez-approvals
+
+
+```{r}
+dd1 <- read.csv( "Data/f1023ez_approvals_2014.csv", stringsAsFactors=F )
+dd1$EIN <- gsub( "-", "", dd1$EIN )
+dd1$ID <- paste0( "ID-", 2014, "-", dd1$EIN )
+saveRDS( dd1, "Data/f1023ez_approvals_2014.rds")
+
+dd2 <- read.csv( "Data/f1023ez_approvals_2015.csv", stringsAsFactors=F )
+dd2$EIN <- gsub( "-", "", dd2$EIN )
+dd2$ID <- paste0( "ID-", 2015, "-", dd2$EIN )
+saveRDS( dd2, "Data/f1023ez_approvals_2015.rds")
+
+dd3 <- read.csv( "Data/f1023ez_approvals_2016.csv", stringsAsFactors=F )
+dd3$EIN <- gsub( "-", "", dd3$EIN )
+dd3$ID <- paste0( "ID-", 2016, "-", dd3$EIN )
+saveRDS( dd3, "Data/f1023ez_approvals_2016.rds")
+
+dd4 <- read.csv( "Data/f1023ez_approvals_2017.csv", stringsAsFactors=F )
+dd4$EIN <- gsub( "-", "", dd4$EIN )
+dd4$ID <- paste0( "ID-", 2017, "-", dd4$EIN )
+saveRDS( dd4, "Data/f1023ez_approvals_2017.rds")
+
+dd5 <- read.csv( "Data/f1023ez_approvals_2018.csv", stringsAsFactors=F )
+dd5$EIN <- gsub( "-", "", dd5$EIN )
+dd5$ID <- paste0( "ID-", 2018, "-", dd5$EIN )
+saveRDS( dd5, "Data/f1023ez_approvals_2018.rds")
+```
+
+All variables remain consistent until 2018, when six new are added:
+
+```{r}
+setdiff( names( dd5 ), names( dd4 ) )
+```
+
+
+```{r}
+dat <- bind_rows( dd1, dd2, dd3, dd4, dd5 )
+dat$ORGNAME <- paste0( dat$Orgname1, "-", dat$Orgname2 )
+dat$ORGNAME <- gsub( "- $", "", dat$ORGNAME )
+head( dat )
+```
+
+
+# Save Nonprofit Addresses
+
+```{r}
+dat.np.addresses <- select( dat, ORGNAME, ID, Address, City, State, Zip )
+```
+
+```{r}
+saveRDS( dat.np.addresses, "Data/NONPROFIT-ADDRESSES-2014-2018.rds")
+```
+
+
+
+# Save Nonprofits
+
+Remove private information that is not necessary for the study.
+
+
+
+```{r}
+keep.these <- 
+  c( "ORGNAME","ID","Mission",
+     "EIN","Orgname1", "Orgname2",
+     "Case.Number", "Formrevision", "Eligibilityworksheet", 
+     "Address", "City", "State", "Zip", "Zippl4", 
+     "Accountingperiodend", "Userfeesubmitted",
+     "Orgurl",
+     "Orgtypecorp", "Orgtypeunincorp", "Orgtypetrust", 
+    "Necessaryorgdocs", "Incorporateddate", "Incorporatedstate", 
+    "Containslimitation", "Doesnotexpresslyempower", "Containsdissolution", 
+    "Nteecode", "Orgpurposecharitable", "Orgpurposereligious", 
+    "Orgpurposeeducational", "Orgpurposescientific", 
+    "Orgpurposeliterary", "Orgpurposepublicsafety", 
+    "Orgpurposeamateursports", "Orgpurposecrueltyprevention", 
+    "Qualifyforexemption","Leginflno", "Leginflyes", 
+    "Compofcrdirtrustno", "Compofcrdirtrustyes", 
+    "Donatefundsno", "Donatefundsyes", "Conductactyoutsideusno", 
+    "Conductactyoutsideusyes", "Financialtransofcrsno", 
+    "Financialtransofcrsyes", "Unrelgrossincm1000moreno", 
+    "Unrelgrossincm1000moreyes", "Gamingactyno", 
+    "Gamingactyyes", "Disasterreliefno", "Disasterreliefyes", 
+    "Onethirdsupportpublic", "Onethirdsupportgifts", 
+    "Benefitofcollege", "Privatefoundation508e", 
+    "Seekingretroreinstatement", "Seekingsec7reinstatement", 
+    "Gamingactyno.1", "Gamingactyyes.1", 
+    "HospitalOrChurchNo", "HospitalOrChurchYes", 
+    "Correctnessdeclaration", "Signaturename", 
+    "Signaturetitle", "Signaturedate",    
+    "EZVersionNumber" )
+```
+
+
+Drop these:
+
+```{r}
+setdiff( names(dat), keep.these )
+```
+
+
+```{r}
+dat.keep <- select( dat, keep.these )
+```
+
+
+```{r}
+saveRDS( dat.keep, "Data/NONPROFITS-2014-2018.rds")
+```
+
+The dataset has `r nrow(dat.keep)` nonprofits, and `r ncol(dat.keep)` variables.
+
+
+```{r}
+head( dat.keep, 10 )
+```
+
+
+
+
+# Key People Data
+
+Managers, Directors, and Key Personnel
+
+Current ID is: ID-YEAR-EIN, which is not unique for multiple board members in the same org. Add a count to signify the order reported on the 1023 forms.
+
+ID-YEAR-EIN-##
+
+You need to use this ID when geo-coding so you can re-join the geocoded data back to the original data. 
+
+
+```{r}
+d1 <- 
+  dat %>%
+  select( ID, ORGNAME, EIN, Signaturedate, Case.Number,  
+          Ofcrdirtrust1firstname, Ofcrdirtrust1lastname, 
+          Ofcrdirtrust1title, Ofcrdirtrust1streetaddr, 
+          Ofcrdirtrust1city, Ofcrdirtrust1state, 
+          Ofcrdirtrust1zip, Ofcrdirtrust1zippl4 ) 
+
+nmz <- names(d1)
+nmz <- gsub( "Ofcrdirtrust[1-9]", "Ofcrdirtrust", nmz )
+names( d1 ) <- nmz
+d1$ID <- paste0( d1$ID, "-01" )
+
+d2 <- 
+  dat %>% 
+  select( ID, ORGNAME, EIN, Signaturedate, Case.Number,
+          Ofcrdirtrust2firstname, Ofcrdirtrust2lastname, 
+          Ofcrdirtrust2title, Ofcrdirtrust2streetaddr, 
+          Ofcrdirtrust2city, Ofcrdirtrust2state, 
+          Ofcrdirtrust2zip, Ofcrdirtrust2zippl4 )
+
+nmz <- names(d2)
+nmz <- gsub( "Ofcrdirtrust[1-9]", "Ofcrdirtrust", nmz )
+names( d2 ) <- nmz
+d2$ID <- paste0( d2$ID, "-02" )
+
+
+d3 <- 
+  dat %>% 
+  select( ID, ORGNAME, EIN, Signaturedate, Case.Number,
+          Ofcrdirtrust3firstname, Ofcrdirtrust3lastname, 
+          Ofcrdirtrust3title, Ofcrdirtrust3streetaddr, 
+          Ofcrdirtrust3city, Ofcrdirtrust3state,
+          Ofcrdirtrust3zip, Ofcrdirtrust3zippl4 )
+
+nmz <- names(d3)
+nmz <- gsub( "Ofcrdirtrust[1-9]", "Ofcrdirtrust", nmz )
+names( d3 ) <- nmz
+d3$ID <- paste0( d3$ID, "-03" )
+
+
+d4 <- 
+  dat %>% 
+  select( ID, ORGNAME, EIN, Signaturedate, Case.Number, 
+          Ofcrdirtrust4firstname, Ofcrdirtrust4lastname, 
+          Ofcrdirtrust4title, Ofcrdirtrust4streetaddr, 
+          Ofcrdirtrust4city, Ofcrdirtrust4state, 
+          Ofcrdirtrust4zip, Ofcrdirtrust4zippl4 )
+
+nmz <- names(d4)
+nmz <- gsub( "Ofcrdirtrust[1-9]", "Ofcrdirtrust", nmz )
+names( d4 ) <- nmz
+d4$ID <- paste0( d4$ID, "-04" )
+
+
+d5 <- 
+  dat %>% 
+  select( ID, ORGNAME, EIN, Signaturedate, Case.Number, 
+          Ofcrdirtrust5firstname, Ofcrdirtrust5lastname, 
+          Ofcrdirtrust5title, Ofcrdirtrust5streetaddr, 
+          Ofcrdirtrust5city, Ofcrdirtrust5state, 
+          Ofcrdirtrust5zip, Ofcrdirtrust5zippl4 )
+
+nmz <- names(d5)
+nmz <- gsub( "Ofcrdirtrust[1-9]", "Ofcrdirtrust", nmz )
+names( d5 ) <- nmz
+d5$ID <- paste0( d5$ID, "-05" )
+
+
+d6 <- bind_rows( d1, d2, d3, d4, d5 )
+head( d6 )
+```
+
+
+### Drop Empty Cases
+
+```{r}
+d6 <- arrange( d6, ID )
+head( d6, 25 ) 
+
+no.data <- d6$Ofcrdirtrustfirstname %in% c(""," ") & 
+           d6$Ofcrdirtrustlastname %in% c(""," ") & 
+           d6$Ofcrdirtrusttitle %in% c(""," ") & 
+           d6$Ofcrdirtruststreetaddr %in% c(""," ") & 
+           d6$Ofcrdirtrustcity %in% c(""," ") & 
+           d6$Ofcrdirtruststate %in% c(""," ") 
+   
+sum( no.data )
+
+nrow( d6 )
+d6 <- d6[ ! no.data , ]
+nrow( d6 )
+```
+
+
+## Add Gender
+
+
+```{r}
+# library( gender )
+
+first.names <- unique( d6$Ofcrdirtrustfirstname )
+length( first.names )
+
+gender.codes <- gender(  first.names )
+
+print( gender.codes, n=10 )
+```
+
+
+### Merge Gender w Data
+
+```{r}
+gender.codes <- select( gender.codes, name, gender, proportion_male )
+
+d7 <- merge( d6, gender.codes, by.x="Ofcrdirtrustfirstname", by.y="name", all.x=TRUE )
+
+table( d7$gender, useNA="ifany" ) %>% prop.table() %>% round(2)
+```
+
+
+## Save Key People Database
+
+```{r}
+saveRDS( d7, "Data/PEOPLE-2014-2018.rds" )
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+```{css, echo=F, eval=T}
+p {
+  color: black;
+  font-size:1.2em;
+  margin: 20px 0 20px 0 !important;
+}
+
+p.caption {
+  text-align: center;
+  font-weight: bold;
+}
+
+th { font-weight: bold; }
+
+td {
+    padding: 3px 10px 3px 10px !important;
+    text-align: center;
+}
+
+table
+{ 
+    margin-left: auto;
+    margin-right: auto;
+    margin-top:80px;
+    margin-bottom:100px;
+}
+
+h1, h2, h3{
+  margin-top:100px !important;
+  margin-bottom:20px !important;
+}
+
+h5{
+    text-align: center;
+    color: gray;
+    font-size:0.8em;
+}
+
+img {
+    max-width: 90%;
+    display: block;
+    margin-right: auto;
+    margin-left: auto;
+    margin-top:30px !important;
+    margin-bottom:30px !important;
+}
+
+
+.sourceCode {
+   margin-top:50px;
+}
+
+.pagedtable-wrapper {
+   margin-bottom:30px;
+}
+```

@@ -1,0 +1,376 @@
+---
+title: "Building 1023-EZ Open Database"
+output:
+  html_document:
+    theme: united
+    df_print: paged
+    highlight: tango
+    smart: false
+    toc: yes
+    toc_float: yes
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning=F, message=F, fig.width=8)
+```
+
+
+In this step we will geocode addresses of the founding teams (managers and board members) and the nonprofit addresses.
+
+
+# Packages
+
+```{r}
+library( dplyr )
+library( tidyr )
+library( httr )
+```
+
+
+
+```{r}
+dat.people <- readRDS( "Data/PEOPLE-2014-2018.rds" )
+head( dat.people, 20 )
+
+dat.npos <- readRDS( "Data/NONPROFIT-ADDRESSES-2014-2018.rds" )
+head( dat.npos,20 )
+```
+
+
+
+
+# Geocode Demo
+
+
+**CENSUS GEOCODER** 
+
+DOCUMENTATION:
+https://www.census.gov/geo/maps-data/data/geocoder.html
+
+WEB FORM:
+https://geocoding.geo.census.gov/geocoder/geographies/addressbatch?form
+
+Addresses should be formatted in a single line with comma delimiters. The address should consist of:
+
+* Unique ID,
+* House Number and Street Name,
+* City,
+* State,
+* ZIP Code
+
+
+```{r}
+addr <- select( dat.people, ID, Ofcrdirtruststreetaddr, Ofcrdirtrustcity, Ofcrdirtruststate, Ofcrdirtrustzip )
+names( addr ) <- c("ID", "STREET", "CITY", "STATE", "ZIP" )
+
+addr.test <- addr[ 1:20, ]
+write.csv( addr.test, "TestAddresses.csv", row.names=F )
+
+
+
+### RETURN GEOGRAPHIES (lat/lon plus census tracts & blocks)
+### library( httr )
+
+apiurl <- "https://geocoding.geo.census.gov/geocoder/geographies/addressbatch"
+
+addressFile <- "TestAddresses.csv"
+
+resp <- POST( apiurl, 
+              body=list(addressFile=upload_file(addressFile), 
+                        benchmark="Public_AR_Census2010",
+                        vintage="Census2010_Census2010",
+                        returntype="csv" ), 
+              encode="multipart" )
+
+# content( resp, as="text" )
+# content( resp )
+
+results <- "results.csv"
+var_names <- c( "id", "input_address", 
+                "match", "match_type", 
+                "out_address", "lat_lon", 
+                "tiger_line_id", "tiger_line_side", 
+                "state_fips", "county_fips", 
+                "tract_fips", "block_fips" )
+v.names <- paste(var_names, collapse=',')
+writeLines( text=c(v.names, content(resp)) , con="results.csv" )
+
+
+
+### ADD VARIABLE NAMES
+# from: https://www.census.gov/geo/maps-data/data/geocoder.html
+
+res <- read.csv( "results.csv", header=T, stringsAsFactors=F, colClasses="character" )
+
+
+### SPLIT LATITUDE AND LONGITUDE COORDINATES
+
+lat.lon <- strsplit( res$lat_lon, "," )
+
+for( i in 1:length(lat.lon) )
+{
+   # print( length( lat.lon[[i]] ) )
+   if( length( lat.lon[[i]] ) < 2 )
+   lat.lon[[ i ]] <- c(NA,NA) 
+}
+
+m <- matrix( unlist( lat.lon ), ncol=2, byrow=T )
+colnames(m) <- c("lon","lat")
+m <- as.data.frame( m )
+
+res <- cbind( res, m )
+head( res )
+
+# write.csv( res, "ResultsAugmented.csv", row.names=F )
+```
+
+
+
+
+
+
+
+
+
+# Batch Geocode People
+
+
+```{r, eval=F}
+dat.people <- readRDS( "Data/PEOPLE-2014-2018.rds" )
+```
+
+
+"Batch files may not exceed 10,000 records."
+
+
+
+```{r}
+
+d2 <- dat.people
+
+# Geocode input file variables: 
+# ID	STREET	CITY	STATE	ZIP
+
+dat.people <- select( dat.people, ID, Ofcrdirtruststreetaddr, 
+              Ofcrdirtrustcity, Ofcrdirtruststate, Ofcrdirtrustzip )
+
+dir.create( "addresses_people" )
+setwd( "addresses_people" )
+
+names( dat.people ) <- NULL  # input file should not have names
+
+# split address files into files with 500 addresses each
+loops <- ceiling( nrow( dat.people ) / 500 )
+
+
+# SPLIT DATA INTO PARTS
+for( i in 1:2 )
+{
+
+filename <- paste0( "AddressesPeople",i,".csv" )
+
+start.row <- ((i-1)*500+1)
+end.row <- (500*i)
+if( nrow(dat.people) < end.row ){ end.row <- nrow(dat.people) }
+
+write.csv( dat.people[ start.row:end.row, ], filename, row.names=F )
+print( i )
+print( paste( "Start Row:", start.row ) )
+print( paste( "End Row:", end.row ) )
+
+}
+
+
+
+### START GEOCODING
+### RETURN GEOGRAPHIES (lat/lon plus census tracts & blocks)
+
+for( i in 1:2 )
+{
+
+filename <- paste0( "AddressesPeople",i,".csv" )
+
+addressFile <- filename
+
+apiurl <- "https://geocoding.geo.census.gov/geocoder/geographies/addressbatch"
+
+
+print( i )
+start_time <- Sys.time()          ###############
+
+try( 
+resp <- POST( apiurl, 
+              body=list(addressFile=upload_file(addressFile), 
+                        benchmark="Public_AR_Census2010",
+                        vintage="Census2010_Census2010",
+                        returntype="csv" ), 
+              encode="multipart" )
+
+# content( resp )
+)
+
+end_time <- Sys.time()
+print( end_time - start_time )    
+
+################
+
+
+
+### ADD VARIABLE NAMES
+# from: https://www.census.gov/geo/maps-data/data/geocoder.html
+
+
+filename2 <- paste0( "results",i,".csv" )
+
+results <- filename2
+
+var_names <- c( "id", "input_address", 
+                "match", "match_type", 
+                "out_address", "lat_lon", 
+                "tiger_line_id", "tiger_line_side", 
+                "state_fips", "county_fips", 
+                "tract_fips", "block_fips" )
+v.names <- paste(var_names, collapse=',')
+writeLines( text=c(v.names, content(resp)) , con=filename2 )
+
+# writeLines( text=content( resp ) , con=filename2 )  
+
+
+
+
+res <- read.csv( filename2, header=T, 
+                 stringsAsFactors=F, 
+                 colClasses="character" )
+
+
+### SPLIT LATITUDE AND LONGITUDE COORDINATES
+
+lat.lon <- strsplit( res$lat_lon, "," )
+
+for( j in 1:length(lat.lon) )
+{
+   # print( length( lat.lon[[j]] ) )
+   if( length( lat.lon[[j]] ) < 2 )
+   lat.lon[[ j ]] <- c(NA,NA) 
+}
+
+m <- matrix( unlist( lat.lon ), ncol=2, byrow=T )
+colnames(m) <- c("lon","lat")
+m <- as.data.frame( m )
+
+res <- cbind( res, m )
+
+write.csv( res, paste0("ResultsPeople",i,".csv"), row.names=F )
+
+
+
+}  # end of loop
+
+
+```
+
+
+
+### Combine Files
+
+```{r}
+dir()
+
+these <- (dir())[ grepl( "ResultsCA", dir() ) ]
+
+dat <- read.csv( these[1], stringsAsFactors=F )
+
+
+for( i in 2:length(these) )
+{
+
+  d <- read.csv( these[i], stringsAsFactors=F )
+  dat <- bind_rows( dat, d ) 
+
+}
+
+plot( dat$lon, dat$lat, pch=19, cex=0.5 )
+
+plot( dat$lon, dat$lat, pch=19, cex=0.5, col=gray(0.5,0.01) )
+
+getwd()
+
+write.csv( dat, "AllCalifornia.csv", row.names=F )
+
+saveRDS( dat, "AllCalifornia.rds" )
+```
+
+
+
+
+# Batch Geocode Nonprofits
+
+copy code for people, adapt for nonprofit addresses
+
+
+
+```{r, eval=F}
+dat.npos <- readRDS( "Data/NONPROFIT-ADDRESSES-2014-2018.rds" )
+```
+
+
+
+
+
+
+```{css, echo=F, eval=T}
+p {
+  color: black;
+  font-size:1.2em;
+  margin: 20px 0 20px 0 !important;
+}
+
+p.caption {
+  text-align: center;
+  font-weight: bold;
+}
+
+th { font-weight: bold; }
+
+td {
+    padding: 3px 10px 3px 10px !important;
+    text-align: center;
+}
+
+table
+{ 
+    margin-left: auto;
+    margin-right: auto;
+    margin-top:80px;
+    margin-bottom:100px;
+}
+
+h1, h2, h3{
+  margin-top:100px !important;
+  margin-bottom:20px !important;
+}
+
+h5{
+    text-align: center;
+    color: gray;
+    font-size:0.8em;
+}
+
+img {
+    max-width: 90%;
+    display: block;
+    margin-right: auto;
+    margin-left: auto;
+    margin-top:30px !important;
+    margin-bottom:30px !important;
+}
+
+
+.sourceCode {
+   margin-top:50px;
+}
+
+.pagedtable-wrapper {
+   margin-bottom:30px;
+}
+```
