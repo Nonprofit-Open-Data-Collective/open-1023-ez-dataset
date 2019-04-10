@@ -164,7 +164,7 @@ loops <- ceiling( nrow( dat.people ) / 500 )
 
 
 # SPLIT DATA INTO PARTS
-for( i in 1:2 )
+for( i in 1:loops )
 {
 
 filename <- paste0( "AddressesPeople",i,".csv" )
@@ -185,7 +185,7 @@ print( paste( "End Row:", end.row ) )
 ### START GEOCODING
 ### RETURN GEOGRAPHIES (lat/lon plus census tracts & blocks)
 
-for( i in 1:2 )
+for( i in 1:loops )
 {
 
 filename <- paste0( "AddressesPeople",i,".csv" )
@@ -276,7 +276,7 @@ write.csv( res, paste0("ResultsPeople",i,".csv"), row.names=F )
 ```{r}
 dir()
 
-these <- (dir())[ grepl( "ResultsCA", dir() ) ]
+these <- (dir())[ grepl( "ResultsPeople", dir() ) ]
 
 dat <- read.csv( these[1], stringsAsFactors=F )
 
@@ -295,10 +295,12 @@ plot( dat$lon, dat$lat, pch=19, cex=0.5, col=gray(0.5,0.01) )
 
 getwd()
 
-write.csv( dat, "AllCalifornia.csv", row.names=F )
+# write.csv( dat, "AllPeopleGeocodes.csv", row.names=F )
 
-saveRDS( dat, "AllCalifornia.rds" )
+saveRDS( dat, "AllPeopleGeocodes.rds" )
 ```
+
+
 
 
 
