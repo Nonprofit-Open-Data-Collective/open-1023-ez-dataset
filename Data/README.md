@@ -12,9 +12,9 @@ These files were downloaded directly from the IRS
 
 dataset                            |   contains  
 -----------------------------------|------------------
-NONPROFIT-ADDRESSES-2014-2018.rds  | Addresses of Nonprofit Firms for Geocoding 
-NONPROFITS-2014-2018.rds           | All org-level data for nonprofits 
-PEOPLE-2014-2018.rds               | Key employees and board members separated out read for geocoding  
+NONPROFITS-2014-2018.rds           | All org-level data for nonprofits  
+NONPROFIT-ADDRESSES-2014-2018.rds  | Addresses of nonprofit firms for geocoding  
+PEOPLE-2014-2018.rds               | Key employees and board members separated out ready for geocoding   
 
 
 
