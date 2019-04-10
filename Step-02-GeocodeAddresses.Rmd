@@ -298,6 +298,8 @@ getwd()
 # write.csv( dat, "PEOPLE-GEOCODES.csv", row.names=F )
 
 saveRDS( dat, "../Data/PEOPLE-GEOCODES.rds" )
+
+setwd( ".." )  # return to main directory
 ```
 
 
