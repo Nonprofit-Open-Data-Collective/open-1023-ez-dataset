@@ -2,8 +2,8 @@
 
 These files were downloaded directly from the IRS
 
-* f1023ez_approvals_2014.rds 
-* to  
+* f1023ez_approvals_2014.rds
+* ...  
 * f1023ez_approvals_2018.rds  
 
 
