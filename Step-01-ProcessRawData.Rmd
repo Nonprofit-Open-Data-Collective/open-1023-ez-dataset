@@ -1,5 +1,6 @@
 ---
-title: "Process Raw Data"
+title: "Step 1: Process Raw Data"
+date: "09/06/2020"
 output:
   html_document:
     theme: united
@@ -8,95 +9,228 @@ output:
     smart: false
     toc: yes
     toc_float: yes
+editor_options: 
+  chunk_output_type: console
 ---
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE, warning=F, message=F, fig.width=8)
 ```
 
+# Introduction
 
-In this first step we will read in all raw data files, and separate them into three separate files:
+In this first script we will compile all raw data and create three separate files:
 
-(1) Data file of nonprofit characteristics.
-(2) File of nonprofit addresses.
-(3) File of managers and board members.
+(1) **NONPROFIT-ADDRESSES-2014-2019.rds**: Data file with complete nonprofit data
+(2) **NONPROFIT-2014-2019.rds**: Nonprofit dataset with addressses and other essential information 
+(3) **PEOPLE-2014-2019.rds**: Board member dataset with addresses and other essential information
 
-# Packages
+Files 2 and 3 will then be enhanced with geolocation data in future scripts. 
 
+**STEPS**
+(1) Downloading raw data and creating a comprenhensive dataset file
+(2) Building a Nonprofit (NPO) Addresses dataset
+(3) Building a Board Members (PPL) Addresses dataset
+
+**PACKAGES**
 ```{r}
 library( dplyr )
 library( tidyr )
 library( gender )
+library( pander )
+library( readxl ) # package to read excel, install with: install.packages("readxl")
+
+#update the path with your working directory:
+wd <- "/Users/icps86/Dropbox/R Projects/Open_data_ignacio"
+setwd(wd) 
 ```
 
 
+# 1. Downloading raw data and creating a comprenhensive dataset file
 
-# Load Raw Data
-
-Raw data files were obtained from: 
+Data files have been previously manually downloaded from the following address under the heading "Files by Year": 
 
 https://www.irs.gov/charities-non-profits/exempt-organizations-form-1023ez-approvals
 
+Standard download format is .xlsx and the data is provided by year.
+
+## 1.1. Transforming xlsx files into rds.
+
+Loading 2014-2019 data and transforming it into rds files.
 
 ```{r}
-dd1 <- read.csv( "Data/f1023ez_approvals_2014.csv", stringsAsFactors=F )
+dd1 <- read_excel("Data/1_Raw/f1023ez_approvals_2014.xlsx")
 dd1$EIN <- gsub( "-", "", dd1$EIN )
 dd1$ID <- paste0( "ID-", 2014, "-", dd1$EIN )
-saveRDS( dd1, "Data/f1023ez_approvals_2014.rds")
+saveRDS( dd1, "Data/1_Raw/f1023ez_approvals_2014.rds")
 
-dd2 <- read.csv( "Data/f1023ez_approvals_2015.csv", stringsAsFactors=F )
+dd2 <- read_excel("Data/1_Raw/f1023ez_approvals_2015.xlsx")
 dd2$EIN <- gsub( "-", "", dd2$EIN )
 dd2$ID <- paste0( "ID-", 2015, "-", dd2$EIN )
-saveRDS( dd2, "Data/f1023ez_approvals_2015.rds")
+saveRDS( dd2, "Data/1_Raw/f1023ez_approvals_2015.rds")
 
-dd3 <- read.csv( "Data/f1023ez_approvals_2016.csv", stringsAsFactors=F )
+dd3 <- read_excel("Data/1_Raw/f1023ez_approvals_2016.xlsx")
 dd3$EIN <- gsub( "-", "", dd3$EIN )
 dd3$ID <- paste0( "ID-", 2016, "-", dd3$EIN )
-saveRDS( dd3, "Data/f1023ez_approvals_2016.rds")
+saveRDS( dd3, "Data/1_Raw/f1023ez_approvals_2016.rds")
 
-dd4 <- read.csv( "Data/f1023ez_approvals_2017.csv", stringsAsFactors=F )
+dd4 <- read_excel("Data/1_Raw/f1023ez_approvals_2017.xlsx")
 dd4$EIN <- gsub( "-", "", dd4$EIN )
 dd4$ID <- paste0( "ID-", 2017, "-", dd4$EIN )
-saveRDS( dd4, "Data/f1023ez_approvals_2017.rds")
+saveRDS( dd4, "Data/1_Raw/f1023ez_approvals_2017.rds")
 
-dd5 <- read.csv( "Data/f1023ez_approvals_2018.csv", stringsAsFactors=F )
+dd5 <- read_excel("Data/1_Raw/f1023ez_approvals_2018.xlsx")
 dd5$EIN <- gsub( "-", "", dd5$EIN )
 dd5$ID <- paste0( "ID-", 2018, "-", dd5$EIN )
-saveRDS( dd5, "Data/f1023ez_approvals_2018.rds")
+saveRDS( dd5, "Data/1_Raw/f1023ez_approvals_2018.rds")
+
+dd6 <- read_excel("Data/1_Raw/f1023ez_approvals_2019.xlsx")
+colnames(dd6)[1] <- "EIN" # NOTE that this file has "Ein" -> fixing it to "EIN" 
+dd6$EIN <- gsub( "-", "", dd6$EIN )
+dd6$ID <- paste0( "ID-", 2019, "-", dd6$EIN )
+saveRDS( dd6, "Data/1_Raw/f1023ez_approvals_2019.rds")
 ```
 
-All variables remain consistent until 2018, when six new are added:
+## 1.2. Binding all rds files into a a single comprenhensive rds
+
+```{r, eval=FALSE, include=FALSE}
+#code Chunk to load rds files we have just created 
+dd1 <- readRDS("Data/1_Raw/f1023ez_approvals_2014.rds")
+dd2 <- readRDS("Data/1_Raw/f1023ez_approvals_2015.rds")
+dd3 <- readRDS("Data/1_Raw/f1023ez_approvals_2016.rds")
+dd4 <- readRDS("Data/1_Raw/f1023ez_approvals_2017.rds")
+dd5 <- readRDS("Data/1_Raw/f1023ez_approvals_2018.rds")
+dd6 <- readRDS("Data/1_Raw/f1023ez_approvals_2019.rds")
+```
+
+Before we bind, we need to adjust some variables. All variables remain consistent until 2018, where some additional variables are added.
 
 ```{r}
+# 2018 vs 2017, The elements of setdiff(x,y) are those elements in x but not in y
 setdiff( names( dd5 ), names( dd4 ) )
+setdiff( names( dd4 ), names( dd5 ) )
 ```
 
+2018 datafile has duplicated "Gamingactyno" and "Gamingactyyes" columns, note that the excel inport process has added the column number to the name to avoid duplicate var names. In addition, we have four new variables:
+
+* "Mission"
+* "HospitalOrChurchNo"  
+* "HospitalOrChurchYes" 
+* "EZVersionNumber"  
+
+"Gamingactyno" and "Gamingactyyes" in 2018 datafile both have identical data.
+```{r}
+identical(dd5$Gamingactyno...103, dd5$Gamingactyno...91)
+identical(dd5$Gamingactyyes...104, dd5$Gamingactyyes...92)
+```
+
+2019 has the same additional variables as 2018
+```{r}
+# 2019 vs 2017
+setdiff( names( dd6 ), names( dd4 ) )
+setdiff( names( dd4 ), names( dd6 ) )
+```
+
+However, in 2019 the duplicated variables hold different values. 
+```{r}
+identical(dd6$Gamingactyno...103, dd6$Gamingactyno...91)
+x <- dd6$Gamingactyno...103 == dd6$Gamingactyno...91
+```
+
+* `r sum(!x)` discrepancies and `r sum(x)` identical values between the variales.
+* `r sum(is.na(dd6$Gamingactyno...91))` NAs in Gamingactyno...91 variable and `r sum(is.na(dd6$Gamingactyno...103))` NAs in Gamingactyno...103 variable
 
 ```{r}
-dat <- bind_rows( dd1, dd2, dd3, dd4, dd5 )
-dat$ORGNAME <- paste0( dat$Orgname1, "-", dat$Orgname2 )
-dat$ORGNAME <- gsub( "- $", "", dat$ORGNAME )
-head( dat )
+identical(dd6$Gamingactyyes...104, dd6$Gamingactyyes...92)
+x <- dd6$Gamingactyyes...104 == dd6$Gamingactyyes...92
 ```
 
+* `r sum(!x[!is.na(x)])` discrepancies and `r sum(x[!is.na(x)])` identical values between the variales
+* `r sum(is.na(dd6$Gamingactyyes...92))` NAs in Gamingactyyes...92 variable and `r sum(is.na(dd6$Gamingactyyes...104))` NAs in Gamingactyyes...104 variable
 
-# Save Nonprofit Addresses
+For binding with the data of previous years, the name of one of the duplicated columns will be set back to its original name (removing the column #). We will leave the duplicated variables present in 2018 and 2019 data and will rename them with a ".1" at the end.
+```{r}
+colnames(dd5)[91] <- "Gamingactyno"
+colnames(dd5)[92] <- "Gamingactyyes"
+colnames(dd5)[103] <- "Gamingactyno.1"
+colnames(dd5)[104] <- "Gamingactyyes.1"
+
+colnames(dd6)[91] <- "Gamingactyno"
+colnames(dd6)[92] <- "Gamingactyyes"
+colnames(dd6)[103] <- "Gamingactyno.1"
+colnames(dd6)[104] <- "Gamingactyyes.1"
+```
+
+Now, binding all years into one single database
 
 ```{r}
-dat.np.addresses <- select( dat, ORGNAME, ID, Address, City, State, Zip )
+dat <- bind_rows( dd1, dd2, dd3, dd4, dd5, dd6 )
 ```
+
+## 1.3. Fixing some variables and saving 2016-2019 dataset rds file
+
+Data set has no gaps in the id variables
+
+* EIN variable has `r sum(is.na(dat$EIN))` NAs
+* Case.Number variable has `r sum(is.na(dat$Case.Number))` NAs
+
+Current dataset has two variables for ORGNAME and they seem to be a single name split into the two vars.
 
 ```{r}
-saveRDS( dat.np.addresses, "Data/NONPROFIT-ADDRESSES-2014-2018.rds")
+head(dat[,c("Orgname1", "Orgname2")],5)
 ```
 
+* Orgname1 has `r sum(is.na(dat$Orgname1))` NAs, while Orgname2 has `r sum(is.na(dat$Orgname2))`, NAs.
+* `r sum(dat$Orgname1 %in% c("", " "))` blanks in Orgname1" and `r sum(dat$Orgname2 %in% c("", " "))` blanks in Orgname2
 
+Looking further check to make sure the variables work when combined:
+```{r}
+x <- dat[,c("Orgname1", "Orgname2")] #subsetting only orgnames to compare
+x <- x[!is.na(x$Orgname2),] #removing NAs from Orgname2
+x$Org2len <- nchar(as.character(x$Orgname2))
+x <- x[order(x$Org2len, decreasing = T),]
+head(x, 10)
+```
 
-# Save Nonprofits
+Merging Orgname 1 and 2 to create variable ORGNAME
 
-Remove private information that is not necessary for the study.
+These are some orgname1 values before merging data in orgname2
+```{r}
+dat$ORGNAME <- dat$Orgname1
+x <- is.na(dat$Orgname2)
+x <- dat[!x,c("Orgname1","Orgname2")]
+x[1:10,]
+```
 
+After merging
+```{r}
+x <- is.na(dat$Orgname2)
+dat$ORGNAME[!x] <- paste0(dat$ORGNAME[!x], dat$Orgname2[!x])
+x <- dat[!x,"ORGNAME"]
+x[1:10,]
+```
 
+Some minor changes to variables and removing redundant information
+```{r}
+colnames(dat)[2] <- "Case.Number"
+dat <- unique(dat)
+dat <- as_tibble(dat)
+saveRDS( dat, "Data/2_InputData/NONPROFIT-ADDRESSES-2014-2019.rds")
+```
+
+The dataset has `r nrow(dat)` nonprofits, and `r ncol(dat)` variables.
+```{r}
+head(dat, 10)
+```
+
+# 2. Building a Nonprofit (NPO) Addresses dataset
+
+Using the **NONPROFIT-ADDRESSES-2014-2019.rds** dataset to make a new file with only the NPO data necessary.
+
+```{r, eval=FALSE, include=FALSE}
+#Code chunk to upload the rds file - in case required
+dat <- readRDS("Data/2_InputData/NONPROFIT-ADDRESSES-2014-2019.rds")
+```
 
 ```{r}
 keep.these <- 
@@ -130,45 +264,123 @@ keep.these <-
     "EZVersionNumber" )
 ```
 
-
-Drop these:
-
+These will be dropped:
 ```{r}
 setdiff( names(dat), keep.these )
+npo <- select( dat, keep.these )
+```
+
+Adding a Year var, and removing redundant data
+```{r}
+#adding YR var
+x <- npo$ID
+npo$YR <- substr(x, start = 4, stop = 7)
+
+#ordering variables
+npo <- npo[,c(2,1,4,68,3,5:67)]
+
+#removing duplicates
+npo <- unique(npo) #from 265,220 to 263,272
+rownames(npo) <- NULL
+```
+
+We have `r length(dat$ID)` cases with ID, of which `r length(unique(dat$ID))` are unique. 
+
+Exploring duplicates: how many? and how many repetitions?
+```{r}
+id.count <- as.data.frame(table(npo$ID))
+id.count <- id.count[order(id.count$Freq, decreasing = T),]
+id.count$Var1 <- as.character(id.count$Var1)
+rownames(id.count) <- NULL
+names(id.count) <- c("ID", "IDdup")
+head(id.count) #some IDs are repeated
+
+#joining IDdup to the dataset
+npo <- left_join(npo, id.count, by = "ID")
+
+#subsetting those with duplicates
+x <- npo$IDdup > 1
+dups <- npo[x,] 
+dups <- dups[order(dups$IDdup, decreasing = T),c(1,69,2:68)]
+
+```
+
+The dataset had ID-2019-123456789 repeated 6 times with different npo information The EIN looks made up (1-2-3-4...)
+```{r}
+dups[1:6,c(1,3,7,8)]
+```
+
+ID-2019-833992638 is repeated 3 times, with different npo information. 
+```{r}
+dups[7:9,c(1,3,7,8)]
+```
+
+The rest are duplicates with what appears the same npo information but different Case.Number and Signaturedate.
+
+Take, for example, cases 10 and 11, they differ in those variables:
+```{r}
+#exploring where is the difference
+Var <- names(dups)
+Case1 <- as.character(dups[10,])
+Case2 <- as.character(dups[11,])
+IsitEqual <- Case1 == Case2 
+tb <- data_frame(Var,Case1,Case2,IsitEqual)
+tb[IsitEqual %in% FALSE,]
+```
+
+Or case 12 and 13:
+```{r}
+Var <- names(dups)
+Case1 <- as.character(dups[12,])
+Case2 <- as.character(dups[13,])
+IsitEqual <- Case1 == Case2
+tb <- data_frame(Var,Case1,Case2,IsitEqual)
+tb[IsitEqual %in% FALSE,]
+```
+
+Given ID is not unique, we will create a key variable that is unique
+```{r}
+#Adding a key variable
+npo <- npo[order(npo$ID),]
+npo$key <- 1:nrow(npo)
+
+#rearranging columns
+npo <- npo[,c(1,70,2:69)]
+```
+
+Saving rds file
+```{r}
+#saving
+npo <- as_tibble(npo)
+saveRDS( npo, "Data/2_InputData/NONPROFITS-2014-2019.rds")
+```
+
+The dataset has `r nrow(npo)` nonprofits, and `r ncol(npo)` variables.
+```{r}
+head(npo, 10)
 ```
 
 
-```{r}
-dat.keep <- select( dat, keep.these )
+# 3. Building a Board Members (PPL) Addresses dataset
+
+Using the **NONPROFIT-ADDRESSES-2014-2019.rds** dataset to create a new dataset with key Board Members information.
+
+Code chunk to upload the rds file - in case required
+```{r, eval=FALSE, include=FALSE}
+dat <- readRDS("Data/2_InputData/NONPROFIT-ADDRESSES-2014-2019.rds")
+
 ```
 
+**NONPROFIT-ADDRESSES-2014-2019.rds** dataset is structured with a nonprofit for each row, holding informatino for five NPO members in mutiple columns. In the following code chunk we are reshaping that dataset so that each row is a board member with a unique ID.
+
+Current ID variable for NPOs is ID-YEAR-EIN. We need to create a new ID variable which is unique for each board member in the same org. To make this ID variable we will add a count for each member, in the order reported on the 1023 forms. 
+
+Like this: ID-YEAR-EIN-##
+
+This ID will be used when geo-coding as reference to re-join the geocoded data back to the original data. 
 
 ```{r}
-saveRDS( dat.keep, "Data/NONPROFITS-2014-2018.rds")
-```
-
-The dataset has `r nrow(dat.keep)` nonprofits, and `r ncol(dat.keep)` variables.
-
-
-```{r}
-head( dat.keep, 10 )
-```
-
-
-
-
-# Key People Data
-
-Managers, Directors, and Key Personnel
-
-Current ID is: ID-YEAR-EIN, which is not unique for multiple board members in the same org. Add a count to signify the order reported on the 1023 forms.
-
-ID-YEAR-EIN-##
-
-You need to use this ID when geo-coding so you can re-join the geocoded data back to the original data. 
-
-
-```{r}
+#first member listed in the npos
 d1 <- 
   dat %>%
   select( ID, ORGNAME, EIN, Signaturedate, Case.Number,  
@@ -177,11 +389,15 @@ d1 <-
           Ofcrdirtrust1city, Ofcrdirtrust1state, 
           Ofcrdirtrust1zip, Ofcrdirtrust1zippl4 ) 
 
+#standardizing the variable names for binding
 nmz <- names(d1)
 nmz <- gsub( "Ofcrdirtrust[1-9]", "Ofcrdirtrust", nmz )
 names( d1 ) <- nmz
+
+#adding board member #
 d1$ID <- paste0( d1$ID, "-01" )
 
+#second member listed in the npos
 d2 <- 
   dat %>% 
   select( ID, ORGNAME, EIN, Signaturedate, Case.Number,
@@ -189,13 +405,12 @@ d2 <-
           Ofcrdirtrust2title, Ofcrdirtrust2streetaddr, 
           Ofcrdirtrust2city, Ofcrdirtrust2state, 
           Ofcrdirtrust2zip, Ofcrdirtrust2zippl4 )
-
 nmz <- names(d2)
 nmz <- gsub( "Ofcrdirtrust[1-9]", "Ofcrdirtrust", nmz )
 names( d2 ) <- nmz
 d2$ID <- paste0( d2$ID, "-02" )
 
-
+#third member listed in the npos
 d3 <- 
   dat %>% 
   select( ID, ORGNAME, EIN, Signaturedate, Case.Number,
@@ -203,13 +418,12 @@ d3 <-
           Ofcrdirtrust3title, Ofcrdirtrust3streetaddr, 
           Ofcrdirtrust3city, Ofcrdirtrust3state,
           Ofcrdirtrust3zip, Ofcrdirtrust3zippl4 )
-
 nmz <- names(d3)
 nmz <- gsub( "Ofcrdirtrust[1-9]", "Ofcrdirtrust", nmz )
 names( d3 ) <- nmz
 d3$ID <- paste0( d3$ID, "-03" )
 
-
+#fourth member listed in the npos
 d4 <- 
   dat %>% 
   select( ID, ORGNAME, EIN, Signaturedate, Case.Number, 
@@ -217,13 +431,12 @@ d4 <-
           Ofcrdirtrust4title, Ofcrdirtrust4streetaddr, 
           Ofcrdirtrust4city, Ofcrdirtrust4state, 
           Ofcrdirtrust4zip, Ofcrdirtrust4zippl4 )
-
 nmz <- names(d4)
 nmz <- gsub( "Ofcrdirtrust[1-9]", "Ofcrdirtrust", nmz )
 names( d4 ) <- nmz
 d4$ID <- paste0( d4$ID, "-04" )
 
-
+#fifth member listed in the npos
 d5 <- 
   dat %>% 
   select( ID, ORGNAME, EIN, Signaturedate, Case.Number, 
@@ -231,140 +444,128 @@ d5 <-
           Ofcrdirtrust5title, Ofcrdirtrust5streetaddr, 
           Ofcrdirtrust5city, Ofcrdirtrust5state, 
           Ofcrdirtrust5zip, Ofcrdirtrust5zippl4 )
-
 nmz <- names(d5)
 nmz <- gsub( "Ofcrdirtrust[1-9]", "Ofcrdirtrust", nmz )
 names( d5 ) <- nmz
 d5$ID <- paste0( d5$ID, "-05" )
 
-
-d6 <- bind_rows( d1, d2, d3, d4, d5 )
-head( d6 )
+#binding all data
+ppl <- bind_rows( d1, d2, d3, d4, d5 ) #all people data as individual cases.
 ```
 
-
-### Drop Empty Cases
-
+Dropping empty cases and redundant data, adding a YR var, changing some var names and arranging the order
 ```{r}
-d6 <- arrange( d6, ID )
-head( d6, 25 ) 
+# identifying empty cases (NAs in all fields)
+x <- is.na(ppl$Ofcrdirtrustfirstname) & 
+           is.na(ppl$Ofcrdirtrustlastname) & 
+           is.na(ppl$Ofcrdirtrusttitle) & 
+           is.na(ppl$Ofcrdirtruststreetaddr) & 
+           is.na(ppl$Ofcrdirtrustcity) & 
+           is.na(ppl$Ofcrdirtruststate)
 
-no.data <- d6$Ofcrdirtrustfirstname %in% c(""," ") & 
-           d6$Ofcrdirtrustlastname %in% c(""," ") & 
-           d6$Ofcrdirtrusttitle %in% c(""," ") & 
-           d6$Ofcrdirtruststreetaddr %in% c(""," ") & 
-           d6$Ofcrdirtrustcity %in% c(""," ") & 
-           d6$Ofcrdirtruststate %in% c(""," ") 
-   
-sum( no.data )
+# removing empty cases
+ppl <- ppl[!x, ] 
 
-nrow( d6 )
-d6 <- d6[ ! no.data , ]
-nrow( d6 )
+# removing duplicated data
+ppl <- unique(ppl)
+rownames(ppl) <- NULL
+
+# adding YR var
+x <- ppl$ID
+ppl$YR <- substr(x, start = 4, stop = 7)
+pander(table(ppl$YR))
+
+# Renaming variables to more friendly names
+names(ppl)
+x <- c("Firstname", "Lastname", "Title", "Address", "City", "State", "Zip", "Zippl4")
+names(ppl)[6:13] <- x
+names(ppl)
+
+#arranging order
+ppl <- arrange( ppl, ID ) #ordering by ID (all board members of the same org together)
 ```
 
-
-## Add Gender
-
+Now we will add a Gender variable. We use the Gender package, which estimates the gender of names using historicl data. 
 
 ```{r}
-# library( gender )
+library(gender)
+#creating a unique list of first names
+first.names <- unique( ppl$Firstname )
+gender.codes <- gender(first.names)
 
-first.names <- unique( d6$Ofcrdirtrustfirstname )
-length( first.names )
-
-gender.codes <- gender(  first.names )
-
-print( gender.codes, n=10 )
-```
-
-
-### Merge Gender w Data
-
-```{r}
+#selecting relevant variables
 gender.codes <- select( gender.codes, name, gender, proportion_male )
+head(gender.codes)
 
-d7 <- merge( d6, gender.codes, by.x="Ofcrdirtrustfirstname", by.y="name", all.x=TRUE )
+#merging gender var to dataset
+ppl <- left_join( ppl, gender.codes, by = c("Firstname" = "name"))
 
-table( d7$gender, useNA="ifany" ) %>% prop.table() %>% round(2)
+x <- round(prop.table(table( ppl$gender, useNA="ifany" )),2)
+pander(x)
 ```
 
-
-## Save Key People Database
-
+Ordering variables
 ```{r}
-saveRDS( d7, "Data/PEOPLE-2014-2018.rds" )
+#ordering variables
+nmz <- c("ID",
+         "ORGNAME",
+         "EIN",
+         "YR",
+         "Signaturedate",
+         "Case.Number",
+         "Firstname",
+         "Lastname",
+         "Title",
+         "Address",
+         "City",
+         "State",
+         "Zip",
+         "Zippl4",
+         "gender",
+         "proportion_male") 
+
+ppl <- ppl[,nmz]
 ```
 
+Checking to see that ID variable is unique...
+```{r}
+id.count <- as.data.frame(table(ppl$ID))
+id.count <- id.count[order(id.count$Freq, decreasing = T),]
+head(id.count) #some IDs are repeated
 
+#making key variable =
+names(id.count) <- c("ID", "IDdup")
+id.count$ID <- as.character(id.count$ID)
 
+#joining count
+ppl <- left_join(ppl, id.count, by = "ID")
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-```{css, echo=F, eval=T}
-p {
-  color: black;
-  font-size:1.2em;
-  margin: 20px 0 20px 0 !important;
-}
-
-p.caption {
-  text-align: center;
-  font-weight: bold;
-}
-
-th { font-weight: bold; }
-
-td {
-    padding: 3px 10px 3px 10px !important;
-    text-align: center;
-}
-
-table
-{ 
-    margin-left: auto;
-    margin-right: auto;
-    margin-top:80px;
-    margin-bottom:100px;
-}
-
-h1, h2, h3{
-  margin-top:100px !important;
-  margin-bottom:20px !important;
-}
-
-h5{
-    text-align: center;
-    color: gray;
-    font-size:0.8em;
-}
-
-img {
-    max-width: 90%;
-    display: block;
-    margin-right: auto;
-    margin-left: auto;
-    margin-top:30px !important;
-    margin-bottom:30px !important;
-}
-
-
-.sourceCode {
-   margin-top:50px;
-}
-
-.pagedtable-wrapper {
-   margin-bottom:30px;
-}
+#subsetting those with duplicates
+x <- ppl$IDdup > 1
+dups <- ppl[x,] 
+names(dups)
+dups <- dups[order(dups$IDdup, decreasing = T),c(1,17,2:16)]
 ```
+
+Given ID is not unique, we will create a key variable that is unique
+```{r}
+#Adding a key variable
+ppl <- ppl[order(ppl$ID),]
+ppl$key <- 1:nrow(ppl)
+
+names(ppl)
+#rearranging columns
+ppl <- ppl[,c(1,18,2:17)]
+```
+
+Saving rds file
+```{r}
+ppl <- as_tibble(ppl)
+saveRDS( ppl, "Data/2_InputData/PEOPLE-2014-2019.rds" )
+```
+
+The dataset has `r nrow(ppl)` nonprofits, and `r ncol(ppl)` variables.
+```{r}
+head(ppl, 10)
+```
+

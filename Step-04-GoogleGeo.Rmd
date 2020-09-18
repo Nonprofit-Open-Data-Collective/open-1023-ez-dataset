@@ -1,0 +1,446 @@
+---
+title: "Step 4: Geocoding Addresses through Google"
+date: "09/06/2020"
+output:
+  html_document:
+    theme: united
+    df_print: paged
+    highlight: tango
+    smart: false
+    toc: yes
+    toc_float: yes
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning=F, message=F, fig.width=8)
+```
+
+# Introduction
+
+In this script we will geocode addresses that were not geocoded by the census service through the google geocode service. The new dataset will be saved as a new version of the main files **NONPROFITS-2014-2019v4.rds** and **PEOPLE-2014-2019v4.rds**.
+
+**STEPS**
+
+(1) Subsetting input files. We work with the **NONPROFIT-2014-2019v3.rds** and **PEOPLE-2014-2019v3.rds** to subset non-POB failed addresses into the input files **NPOAddresses_google.rds** and **PPLAddresses_google.rds**.
+(2) Intro to the Google geocode service and demo. 
+(3) Geocoding NPO Addresses (**NPOAddresses_google.rds**). The script will yield raw output file **NPOAddresses_googleGEO.rds**. The geocoded addressese will then be integrated into a new version of the main file **NONPROFIT-2014-2019v4.rds**.
+(4) Geocoding PPL Addresses (**PPLAddresses_google.rds**). The script will yield raw output file **PPLAddresses_googleGEO.rds**.The geocoded addressese will then be integrated into a new version of the main file **PEOPLE-2014-2019v4.rds**.
+(5) Troubleshooting
+
+**NOTES** 
+
+* Geocoding can take several hours, for this reason some code chunks in this script are not evaluated. Outputs yielded from the process are loaded from stored files to ilustrate the results.
+
+**PACKAGES**
+```{r}
+#setting up the environment
+library( dplyr )
+library( tidyr )
+library( pander )
+library( ggmap ) 
+
+# update the path with your working directory:
+wd <- "/Users/icps86/Dropbox/R Projects/Open_data_ignacio"
+setwd(wd)
+```
+
+# 1. Generating input files
+
+```{r}
+# loading main files
+npo.main <- readRDS("Data/3_GeoCensus/NONPROFITS-2014-2019v3.rds") 
+ppl.main <- readRDS("Data/3_GeoCensus/PEOPLE-2014-2019v3.rds")
+```
+
+Addresses with failed Geocodes and excluding POBs will be will be saved into files **NPOAddresses_google.rds** and **PPLAddresses_google.rds** for passing them through the Google geocoding service.
+
+Google geocoding process, needs only input_address and ID variables
+
+Subsetting NPO addresses for google geocoding
+```{r, eval=F}
+# will subset NA, Tie and No_match values
+x <- which(npo.main$match %in% c("No_Match", "Tie", NA))
+npo <- npo.main[x,c(1,71,73)]
+
+# removing POBs
+x <- which(npo$pob == 0)
+npo <- npo[x,]
+
+# reseting ID and removing duplicate addresses
+npo$ID <- 0
+npo <- unique(npo)
+npo <- npo[order(npo$input_address),]
+npo$ID <- 1:nrow(npo)
+rownames(npo) <- NULL
+saveRDS(npo, "Data/4_GeoGoogle/NPOAddresses_google.rds")
+```
+
+
+Subsetting PPL addresses for google geocoding
+```{r, eval=F}
+# will subset NA, Tie and No_match values and all POBs
+x <- which(ppl.main$match %in% c("No_Match", "Tie", NA))
+ppl <- ppl.main[x,c(1,19, 21)]
+
+# removing POBs
+x <- which(ppl$pob == 0)
+ppl <- ppl[x,]
+
+# Reseting ID var and removing duplicate addresses
+ppl$ID <- 0
+ppl <- unique(ppl)
+ppl <- ppl[order(ppl$input_address),]
+ppl$ID <- 1:nrow(ppl)
+rownames(ppl) <- NULL
+saveRDS(ppl, "Data/4_GeoGoogle/PPLAddresses_google.rds")
+```
+
+
+# 2. Demo: The Google Geocoding Service
+
+Sources:
+•	https://lucidmanager.org/geocoding-with-ggmap/   
+•	https://www.wpgmaps.com/documentation/troubleshooting/this-api-project-is-not-authorized-to-use-this-api/
+•	https://www.rdocumentation.org/packages/ggmap/versions/3.0.0/topics/geocode 
+
+The google API receives data as a character vector of street addresses or place names (e.g. "1600 pennsylvania avenue, washington dc" or "Baylor University") and returns lat and lon coordinates. 
+
+Even though there should be no costs (because we are using the free geocodes available), you will need to enter your credit card information. Google allows for 40,000 calls a month for free. **SEE WHERE CAN WE CHECK THIS if THE POLICY CHANGES?**
+
+Steps to set up a google API:
+
+1.	Use your Google Account (or create one) and obtain an API key from Google. Follow the instructions in the Link.
+2.	At the Google Cloud Platform, you will need to create a project to which you will then get an API. Once the project is created, follow the instructions and create an API Key.
+3.	In your R project folder create a text file with your API, so that you can load it afterwards (e.g. I created a txt called “google.api”) 
+4.	If you do not have one, you will need to create a billing account to associate it with the project. At the Google Cloud Platform Console, click on the menu button > Billing, and follow the instructions to create a Billing account. 
+5.	As the last step, now you need to enable certain API services for the geocoding to work.  Following these instructions
+6.	Using the API Library enable the following three APIs:
+    
+    a.	Google Maps JavaScript API
+    b.	Google Maps Geocoding API
+    c.	Google Maps Places API
+
+7.	Once this is ready, you should try running the code
+8.	Google recommends placing restrictions to your account, to limit the possibility of being charged.
+
+Testing the google service on a small sample...
+```{r, eval=F}
+setwd(wd)
+ppl <- readRDS("Data/4_GeoGoogle/PPLAddresses_google.rds")
+
+# 1. selecting the 40 after to test geocode
+x <- ppl$ID
+x <- sample(x, 5, replace = FALSE, prob = NULL)
+smpl <- ppl[x,]
+
+api <- readLines("../google1.api") # reading my personal API key from a local file
+
+register_google(key = api) #The register_google function stores the API key.
+getOption("ggmap") #summarises the Google credentials to check how you are connected.
+dat <- mutate_geocode(smpl, input_address, output = "latlona", source = "google", messaging = T) #generates an object where the original dataset is binded with the geocode results.
+
+saveRDS(dat, "Data/4_GeoGoogle/DemoResults.rds")
+```
+
+The output of the google geocode looks like this:
+```{r}
+dat <- readRDS("Data/4_GeoGoogle/DemoResults.rds")
+pander(dat)
+```
+
+
+# 3. Geocoding NPO Addresses
+
+Loading file
+```{r}
+# setting wd
+wd2 <- paste0(wd, "/Data/4_GeoGoogle")
+setwd(wd2)
+
+# Loading addresses to geocode
+npo <- readRDS("NPOAddresses_google.rds")
+```
+
+## 3.1 Preparing the files
+
+We have `r nrow(npo)` addresses to geocode. This will have to be divided in two batches.
+```{r, eval=F}
+# We need to split the address file into two batches
+npo1 <- npo[1:40000,]
+npo2 <- npo[40001:nrow(npo)]
+```
+
+## 3.2 Geocoding
+
+The following code chunk will run the first batch **npo1**:
+```{r, eval=F}
+# loading API 
+api <- readLines("../../../google1.api")
+
+# Geocoding through google. This will generate an object where the priginal dataset is binded with the geocode results.
+register_google(key = api) #The register_google function stores the API key.
+getOption("ggmap") #summarises the Google credentials to check how you are connected.
+npo1.res <- mutate_geocode(npo1, input_address, output = "latlona", source = "google", messaging = T) 
+
+#saving results 
+saveRDS(npo1.res, "Results/npo1res.rds") # change the name of the file accordingly
+```
+
+## 3.3. Integrating files into main NPO file
+
+Loading files to integrate
+```{r, eval=F}
+setwd(wd)
+
+# loading results file
+npo.res <- readRDS("Data/4_GeoGoogle/Results/NPOAddresses_googleGEO.rds")
+npo.res <- npo.res[,-c(1,2)]
+names(npo.res) <- c("input_address", "lon_ggl", "lat_ggl", "address_ggl")
+
+# loading main
+npo.main <- readRDS("Data/3_GeoCensus/NONPROFITS-2014-2019v3.rds")
+
+```
+
+Joining files
+```{r, eval=F}
+npo.main <- left_join(npo.main, npo.res, by = "input_address")
+```
+
+Adding a geocode_type variable to all Addresses geocoded by google
+```{r, eval=F}
+x <- which(!is.na(npo.main$address_ggl))
+npo.main$geocode_type[x] <- "google"
+```
+
+Saving the new version of the ppl.main file
+```{r, eval=F}
+saveRDS(npo.main, "Data/4_GeoGoogle/NONPROFITS-2014-2019v4.rds")
+```
+
+## 3.4 Exploring NPO Geocode Results
+
+Lets take a look at the geolocations of our Board Members:
+```{r}
+# read in file if necessary
+npo.main <- readRDS("Data/4_GeoGoogle/NONPROFITS-2014-2019v4.rds")
+```
+
+Summary of geocoding process
+
+There are `r nrow(npo.main)` NPO listed.
+with `r length(unique(npo.main$input_address))` unique addresses
+
+```{r}
+#Summary
+x <- table(npo.main$geocode_type, useNA = "always")
+y <- prop.table(table(npo.main$geocode_type, useNA = "always"))
+
+summary <- as.data.frame(t(rbind(x,y)))
+colnames(summary) <- c("frequency", "percent")
+summary$percent <- summary$percent*100
+summary[nrow(summary)+1,] <- c(sum(summary$frequency), 100)
+rownames(summary)[nrow(summary)] <- "TOTAL"
+pander(summary)
+
+```
+
+The following numbers of POBs
+```{r}
+x <- round(prop.table(table(npo.main$pob, useNA = "ifany"))*100,1)
+names(x) <- c("Non-POB", "POB")
+pander(x)
+```
+
+Summary of geocoding process excluding POBs:
+```{r}
+x <- which(npo.main$pob == 0)
+npo.main1 <- npo.main[x,]
+
+#Summary
+x <- table(npo.main1$geocode_type, useNA = "always")
+y <- prop.table(table(npo.main1$geocode_type, useNA = "always"))
+
+summary <- as.data.frame(t(rbind(x,y)))
+colnames(summary) <- c("frequency", "percent")
+summary$percent <- summary$percent*100
+summary[nrow(summary)+1,] <- c(sum(summary$frequency), 100)
+rownames(summary)[nrow(summary)] <- "TOTAL"
+pander(summary)
+
+```
+
+Summary of geocoding process for only POBs:
+```{r}
+x <- which(npo.main$pob == 1)
+npo.main2 <- npo.main[x,]
+
+#Summary
+x <- table(npo.main2$geocode_type, useNA = "always")
+y <- prop.table(table(npo.main2$geocode_type, useNA = "always"))
+
+summary <- as.data.frame(t(rbind(x,y)))
+colnames(summary) <- c("frequency", "percent")
+summary$percent <- summary$percent*100
+summary[nrow(summary)+1,] <- c(sum(summary$frequency), 100)
+rownames(summary)[nrow(summary)] <- "TOTAL"
+pander(summary)
+
+```
+
+
+# 4. Geocoding PPL Addresses
+
+Loading file
+```{r}
+# setting wd
+wd2 <- paste0(wd, "/Data/4_GeoGoogle")
+setwd(wd2)
+
+# Loading addresses to geocode
+ppl <- readRDS("PPLAddresses_google.rds")
+```
+
+## 4.1 Preparing the files
+
+We have `r nrow(ppl)` addresses to geocode. This will have to be divided in five batches.
+```{r, eval=F}
+# We need to split the address file into two batches
+ppl1 <- ppl[1:40000,]
+ppl2 <- ppl[40001:nrow(ppl)]
+```
+
+## 4.2 Geocoding PPL addresses
+
+The following code chunk will run the first batch **ppl1**:
+```{r, eval=F}
+# loading API 
+api <- readLines("../../../google1.api")
+
+# Geocoding through google. This will generate an object where the priginal dataset is binded with the geocode results.
+register_google(key = api) #The register_google function stores the API key.
+getOption("ggmap") #summarises the Google credentials to check how you are connected.
+ppl1.res <- mutate_geocode(ppl1, input_address, output = "latlona", source = "google", messaging = T) 
+
+#saving results 
+saveRDS(ppl1.res, "Results/ppl1res.rds") # change the name of the file accordingly
+```
+
+## 4.3. Integrating files into main PPL file
+
+Loading files to integrate
+```{r, eval=F}
+setwd(wd)
+
+# loading results file
+ppl.res <- readRDS("Data/4_GeoGoogle/Results/PPLAddresses_googleGEO.rds")
+ppl.res <- ppl.res[,-c(1,2)]
+names(ppl.res) <- c("input_address", "lon_ggl", "lat_ggl", "address_ggl")
+
+# loading main
+ppl.main <- readRDS("Data/3_GeoCensus/PEOPLE-2014-2019v3.rds")
+```
+
+Joining files
+```{r, eval=F}
+ppl.main <- left_join(ppl.main, ppl.res, by = "input_address")
+```
+
+Adding a geocode_type variable to all Addresses geocoded by google
+```{r, eval=F}
+x <- which(!is.na(ppl.main$address_ggl))
+ppl.main$geocode_type[x] <- "google"
+```
+
+Saving the new version of the ppl.main file
+```{r, eval=F}
+saveRDS(ppl.main, "Data/4_GeoGoogle/PEOPLE-2014-2019v4.rds")
+```
+
+## 4.4 Exploring PPL Geocode Results
+
+```{r}
+# read in file if necessary
+ppl.main <- readRDS("Data/4_GeoGoogle/PEOPLE-2014-2019v4.rds")
+```
+
+Summary of geocoding process
+
+There are `r nrow(ppl.main)` PPL listed.
+with `r length(unique(ppl.main$input_address))` unique addresses
+
+```{r}
+#Summary
+x <- table(ppl.main$geocode_type, useNA = "always")
+y <- prop.table(table(ppl.main$geocode_type, useNA = "always"))
+
+summary <- as.data.frame(t(rbind(x,y)))
+colnames(summary) <- c("frequency", "percent")
+summary$percent <- summary$percent*100
+summary[nrow(summary)+1,] <- c(sum(summary$frequency), 100)
+rownames(summary)[nrow(summary)] <- "TOTAL"
+pander(summary)
+
+```
+
+The following numbers of POBs
+```{r}
+x <- round(prop.table(table(ppl.main$pob, useNA = "ifany"))*100,1)
+names(x) <- c("Non-POB", "POB")
+pander(x)
+```
+
+Summary of geocoding process excluding POBs:
+```{r}
+x <- which(ppl.main$pob == 0)
+ppl.main1 <- ppl.main[x,]
+
+#Summary
+x <- table(ppl.main1$geocode_type, useNA = "always")
+y <- prop.table(table(ppl.main1$geocode_type, useNA = "always"))
+
+summary <- as.data.frame(t(rbind(x,y)))
+colnames(summary) <- c("frequency", "percent")
+summary$percent <- summary$percent*100
+summary[nrow(summary)+1,] <- c(sum(summary$frequency), 100)
+rownames(summary)[nrow(summary)] <- "TOTAL"
+pander(summary)
+
+```
+
+Summary of geocoding process for only POBs:
+```{r}
+x <- which(ppl.main$pob == 1)
+ppl.main2 <- ppl.main[x,]
+
+#Summary
+x <- table(ppl.main2$geocode_type, useNA = "always")
+y <- prop.table(table(ppl.main2$geocode_type, useNA = "always"))
+
+summary <- as.data.frame(t(rbind(x,y)))
+colnames(summary) <- c("frequency", "percent")
+summary$percent <- summary$percent*100
+summary[nrow(summary)+1,] <- c(sum(summary$frequency), 100)
+rownames(summary)[nrow(summary)] <- "TOTAL"
+pander(summary)
+
+```
+
+
+# 5. Troubleshooting
+
+In the case a geocode process is aborted before finishing, you might need to geocode the process again. The code below helps to compile all geocode results into one.
+
+ADD examples...
+
+What happens if census has to be done multiple times? If the data breaks? How to manage?
+•	Potential troubleshooting: IDs
+•	Getting stuck and having to reset
+•	Blank files returned
+•	What data checks can we do to make sure the step is final?
+•	Setting your computer to not sleep or turn harddrive off.
+
+
+

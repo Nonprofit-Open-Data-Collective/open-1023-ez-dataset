@@ -1,0 +1,847 @@
+---
+title: "Disambiguation"
+date: "7/8/2020"
+output:
+  html_document:
+    theme: united
+    df_print: paged
+    highlight: tango
+    smart: false
+    toc: yes
+    toc_float: yes
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning=F, message=F, fig.width=8)
+```
+
+# Introduction
+
+In this script we will run a series of analysis to test the validity of our assumptions for this dataset and assess the scope of its representativeness. 
+
+**PACKAGES**
+```{r}
+#setting up the environment
+library( dplyr )
+library( tidyr )
+library( pander )
+
+# update the path with your working directory:
+wd <- "/Users/icps86/Dropbox/R Projects/Open_data_ignacio"
+setwd(wd)
+```
+
+
+# 1. Representativeness of dataset
+Nonprofits in our dataset represent what subset of the nonprofit universe?
+  
+what about other variables? for example, the ids had repetitions.
+
+# 2. Data integrity
+
+## 2.1 Repeted values
+
+see in addresses but also other fields, e.g., ID codes, names? (See what I did before in the first script.)
+
+Loading the main files
+```{r, eval=FALSE}
+ppl <- readRDS("Data/6_CensusData/PEOPLE-2014-2019v6.rds")
+npo <- readRDS("Data/6_CensusData/NONPROFITS-2014-2019v6.rds")
+
+dim(ppl)
+dim(npo)
+
+```
+
+
+### a) Exploring duplicates in the ID fields.
+
+note: some cases have duplicated in the transformation processess, need to understand why.e.g., even the key variable has duplicates and the google address did not match the regular address, might there have been a problem with the joins?
+
+```{r}
+names(ppl)
+
+head(ppl$ID)
+head(ppl$ORGNAME)
+head(ppl$EIN)
+head(ppl$key)
+
+x <- ppl$key
+length(x)
+length(unique(x))
+
+y <- duplicated(x)
+these <- x[y]
+
+y <- which(ppl$key %in% these)
+dat <- ppl[y,]
+
+table(x$Freq)
+```
+
+
+Due to repetition of addresses and not having unique ID we added a new key variable.
+```{r, eval=FALSE}
+# address length
+barplot(table(add$add.len))
+barplot(table(npo$add.len))
+```
+
+
+### b) Exploring Duplicated addresses
+
+If we have the same address listed for multiple addresses for board members can we tell if they live together, or they just filed under the same address?
+Use last names?
+
+**NPO**
+Exploring the 20 most repeated NPO addressess
+```{r}
+names(npo)
+add <- npo[,c(3,73)]
+str(add)
+
+dat <- as.data.frame(table(add$input_address), stringsAsFactors = FALSE)
+x <- dat$Freq > 1
+dat <- dat[x,]
+dat <- dat[order(dat$Freq, decreasing = T),]
+names(dat) <- c("input_address", "Frequency")
+str(dat)
+
+# saving file 
+write.csv(dat, "Data/7_Disambiguation/2_Add_Integrity/repeated_addresses/top_add_NPO.csv", row.names = FALSE)
+
+# saving a file with the orgnames
+
+x <- dat$input_address
+x <- which(add$input_address %in% x)
+x <- add[x,]
+x <- x[order(x$input_address),]
+
+write.csv(x, "Data/7_Disambiguation/2_Add_Integrity/repeated_addresses/add-org_NPO.csv", row.names = FALSE)
+
+```
+
+**PPL**
+Exploring the 20 most repeated PPL addressess
+```{r}
+names(ppl)
+add <- ppl[,c(3,21)]
+str(add)
+
+dat <- as.data.frame(table(add$input_address), stringsAsFactors = FALSE)
+x <- dat$Freq > 1
+dat <- dat[x,]
+dat <- dat[order(dat$Freq, decreasing = T),]
+names(dat) <- c("input_address", "Frequency")
+str(dat)
+
+# saving file 
+write.csv(dat, "Data/7_Disambiguation/2_Add_Integrity/repeated_addresses/top_add_PPL.csv", row.names = FALSE)
+
+# saving a file with the orgnames
+
+x <- dat$input_address
+x <- which(add$input_address %in% x)
+x <- add[x,]
+x <- x[order(x$input_address),]
+
+write.csv(x, "Data/7_Disambiguation/2_Add_Integrity/repeated_addresses/add-org_PPL.csv", row.names = FALSE)
+
+```
+
+
+## 2.2 Data gaps and unintelligible values
+
+LENGTH: Using the Address character length variable (add.len) to see the distribution and determine when an address is short enough to assume it is unintelligible. see work in pob script and first script  too
+
+are all values intelligble? e.g. city variable: has some wierd values (see script 2) 
+what happened to the addresses that are “—-”? and what happened to the NPO IDs that are not unique?
+
+Firstname gaps? other vars with gaps?
+
+Defining Weak Addresses:
+* Inconsistencies (e.g., we know from the zip it is a different state. Geocode data can help identify this)
+* Non-sensical (plain number, missing structural info, too small, etc.)
+* Repeated
+
+How to treat them? flag them?
+
+**Address Parsing**
+```{r, eval=FALSE}
+dat <- read.csv("Data/7_Disambiguation/3_GeocodeAcc/SampleTest-1_NPO.csv", stringsAsFactors = FALSE, colClasses="character")
+
+# removing unwanted columns
+names(dat)
+dat <- dat[1:498,c(1,2)]
+head(dat)
+dat <- dat[order(as.numeric(dat$key)),]
+
+# saving file 
+# write.csv(dat, "Data/7_Disambiguation/3_GeocodeAcc/address_parsing/new_sample_add_NPO.csv", row.names = FALSE)
+```
+
+
+## 2.3 Reliability of address reported
+
+How can we tell whether an address is a home address or a business address? 
+Can we compare to a business establishments database? 
+Maybe: https://docs.safegraph.com/docs/places-schema
+Does the Google API have any return field that might help? 
+
+
+How to grasp whether the addresses reported are in fact the actual address?
+* Repeated addresses
+* Business when it should be residential (in particular for PPL) - NEED TO FIND a list of businesses establishment addresses
+* Other strategies?
+
+If we have the same address listed for multiple addresses for board members can we tell if they live together? or they just filed under the same address?
+Use last names?
+
+How can we tell whether an address is a home address or a business address? 
+Can we compare to a business establishments database? 
+Maybe: https://docs.safegraph.com/docs/places-schema
+Does the Google API have any return field that might help? 
+
+## 2.4 Manually checking address integrity
+
+
+Loading the main files
+```{r, eval=FALSE}
+ppl <- readRDS("Data/6_CensusData/PEOPLE-2014-2019v6.rds")
+npo <- readRDS("Data/6_CensusData/NONPROFITS-2014-2019v6.rds")
+
+dim(ppl)
+dim(npo)
+
+```
+
+### a) Board Member dataset (PPL)
+
+Getting a sample of 100 addresses, after removing POBs and unintelible addresses
+```{r}
+names(ppl)
+table(ppl$geocode_type, useNA = "always") %>% pander()
+
+# removing POBs and NAs
+add <- ppl
+x <- is.na(add$geocode_type)
+add <- add[!x,]
+x <- add$pob == 0
+add <- add[x,]
+
+table(add$geocode_type, useNA = "always") %>% pander()
+
+# exploring the address length
+x <- table(add$add.len)
+barplot(x)
+
+# removing addressses with length NA and less than 8
+x <- is.na(add$add.len)
+sum(x)
+add <- add[!x,]
+
+x <- add$add.len >= 8
+add <- add[x,]
+
+# confirming the address length changed
+x <- table(add$add.len)
+barplot(x)
+
+# subsetting a sample of 100 addresses from the PPL dataset
+dim(add)
+x <- sample(nrow(add),100,replace = FALSE)
+
+dat <- add[x,]
+
+# saving the subset
+#write.csv(dat, "Data/7_Disambiguation/2_Add_Integrity/manual_check/PPL_100.csv", row.names = FALSE)
+
+```
+
+Getting the Mission of my sample
+```{r}
+x <- read.csv("Data/7_Disambiguation/2_Add_Integrity/manual_check/PPL_100.csv", stringsAsFactors = FALSE)
+x <- x$EIN
+
+dat <- npo
+x <- which(dat$EIN %in% x)
+dat <- dat[x,]
+
+# saving the subset
+#write.csv(dat, "Data/7_Disambiguation/2_Add_Integrity/manual_check/PPL_100_orgs.csv", row.names = FALSE)
+```
+
+Getting a the complete list of PPLs for the NPOs in the Sample
+
+```{r}
+x <- read.csv("Data/7_Disambiguation/2_Add_Integrity/manual_check/PPL_100.csv", stringsAsFactors = FALSE)
+
+# selecting the PPL that belong to the NPOs in the sample PPL dataset
+x <- x$ORGNAME
+
+these <- which(ppl$ORGNAME %in% x)
+
+dat <- ppl[these, ]
+
+# saving the subset
+# write.csv(dat, "Data/7_Disambiguation/2_Add_Integrity/manual_check/PPL_100_full.csv", row.names = FALSE)
+```
+
+Searching for RIVERTON WHARF, RIVERTON, MD, 21837
+
+```{r}
+
+these <- which(ppl$input_address %in% "RIVERTON WHARF, RIVERTON, MD, 21837")
+dat <- ppl[these, ]
+
+# saving the subset
+# write.csv(dat, "Data/7_Disambiguation/2_Add_Integrity/manual_check/PPL_riverton.csv", row.names = FALSE)
+
+# checking how many NPOs have that address
+these <- which(npo$input_address %in% "RIVERTON WHARF, RIVERTON, MD, 21837") # only 4
+
+
+```
+
+
+**PENDING**: I took a look at the addresses that had zip, and many of them seem like they could be geocoded, need to explore whether they can or maybe there was a problem with the merge?
+```{r}
+# which are the zips?
+x <- add$geocode_type %in% c("zip1", "zip2")
+
+x <- add[x,]
+
+```
+
+### b) Nonprofit dataset (NPO)
+
+## 2.5 Comparing PPL and NPO datasets
+Are there any differences between the NPO and the PPL addresses?
+should we treat them differently?
+
+
+# 3. Testing accuracy of Geocodes 
+
+What is our Geocoding strategy: why the order of our priority list?
+How we know the geocodes are right? Manually validating
+
+## 3.1 Comparing 1000 NPO geocodes
+
+We will compare the geocode accuracy among different sources in a sample
+
+1. Google
+2. Census
+3. IPUMS
+4. TAMU
+
+Loading the main files
+```{r, eval=FALSE}
+ppl <- readRDS("Data/6_CensusData/PEOPLE-2014-2019v6.rds")
+npo <- readRDS("Data/6_CensusData/NONPROFITS-2014-2019v6.rds")
+
+dim(ppl)
+dim(npo)
+
+```
+
+### 3.1.1 Sample of 1000 addresses in the NPO dataset
+```{r, eval= FALSE}
+add <- npo
+
+# removing POBs
+x <- add$pob == 0
+add <- add[x,]
+table(add$pob, useNA = "ifany")
+
+# removing dups
+x <- add$IDdup == 1
+add <- add[x,]
+table(add$IDdup, useNA = "ifany")
+
+# keeping only columns I will use
+add <- select(add, key, ORGNAME, YR, Address, City, State, Zip, add.len, input_address, address_ggl, geocode_type, match, match_type, lon_cen, lat_cen, lon_ggl, lat_ggl)
+
+# removing small addresses
+x <- add$add.len > 8
+add <- add[x,]
+
+#sampling
+x <- sample(nrow(add),1000,replace=FALSE)
+add <- add[x,]
+
+#saveRDS(add, "Data/7_Disambiguation/3_GeocodeAcc/Add-sample-NPO.rds")
+```
+
+Checking the sample
+```{r, eval=FALSE}
+add<- readRDS("Data/7_Disambiguation/3_GeocodeAcc/Add-sample-NPO.rds")
+
+table(add$geocode_type, useNA = "always")
+sum(is.na(add$lat_cen)) # 204 addresses had no census
+sum(is.na(add$lat_ggl)) # 833 addresses had no google
+
+# will fill in the gaps of these addresses for each service, plus get the TAMU
+```
+
+### 3.1.2 Census geocode
+
+Creating a raw input file
+```{r, eval=FALSE}
+# code to create the folder:
+# dir.create( "Data/7_Disambiguation/3_GeocodeAcc")
+
+# creating the address file
+names(add)
+dat <- add[,c(1,4,5,6,7)]
+rownames(dat) <- NULL
+write.csv(dat, "Data/7_Disambiguation/3_GeocodeAcc/SampleTest-1_NPO.csv", row.names = FALSE)
+```
+
+Census geoceding
+```{r,eval=FALSE}
+# loading httr package
+library( httr )
+
+# temporarily setting the working directory for geocode
+wd2 <- paste0(wd, "/Data/7_Disambiguation/3_GeocodeAcc")
+setwd(wd2)
+dir()
+
+apiurl <- "https://geocoding.geo.census.gov/geocoder/geographies/addressbatch"
+addressFile <- "SampleTest-1_NPO.csv"
+
+# geocode query
+resp <- POST( apiurl, 
+              body=list(addressFile=upload_file(addressFile), 
+                        benchmark="Public_AR_Census2010",
+                        vintage="Census2010_Census2010",
+                        returntype="csv" ), 
+              encode="multipart" )
+
+# creating column names to add to results file
+var_names <- c( "key", "input_address", 
+                "match", "match_type", 
+                "out_address", "lat_lon", 
+                "tiger_line_id", "tiger_line_side", 
+                "state_fips", "county_fips", 
+                "tract_fips", "block_fips" )
+
+var_names <- paste(var_names, collapse=',')
+
+# adding column names using write lines
+writeLines( text=c(var_names, content(resp)), con="SampleTest-1_NPO_results.csv" )
+
+# loading the results from the csv file we created
+res <- read.csv("SampleTest-1_NPO_results.csv", header=T, stringsAsFactors=F, colClasses="character" )
+
+# removing the column headers that were passed as addresses
+x <- which(res$key == "key")
+res <- res[-x,]
+
+# Splitting Latitude and longitude coordinates
+lat.lon <- strsplit( res$lat_lon, "," )
+
+for( i in 1:length(lat.lon) )
+  {
+  if( length( lat.lon[[i]] ) < 2 )
+  lat.lon[[ i ]] <- c(NA,NA) 
+  }
+
+m <- matrix( unlist( lat.lon ), ncol=2, byrow=T )
+colnames(m) <- c("lon","lat")
+m <- as.data.frame( m )
+
+res <- cbind( res, m )
+head( res )
+
+# updating the results with splitted lat lons
+# write.csv( res, "SampleTest-1_NPO_results.csv", row.names=F )
+
+setwd(wd)
+```
+
+Loading results
+```{r, eval=FALSE}
+res <- read.csv( "Data/7_Disambiguation/3_GeocodeAcc/SampleTest-1_NPO_results.csv", header=T, stringsAsFactors=F, colClasses="character")
+
+#fixing class types
+res$key <- as.numeric(res$key)
+res$lat <- as.numeric(res$lat)
+res$lon <- as.numeric(res$lon)
+
+sum(is.na(res$lat)) # 168 had no match in the census geocode
+
+# adding ipums to var names for easy id
+x <- names(res)
+x <- paste0("cen_",x)
+x[1] <- "key"
+names(res) <- x
+```
+
+Binding results to sample address file
+```{r, eval=FALSE}
+add <- left_join(add, res, by = "key")
+
+# Saving the new version of the npo.main file
+# saveRDS(add, "Data/7_Disambiguation/3_GeocodeAcc/Add-sample-NPOv1.rds")
+```
+
+
+### 3.1.3 Google geocoding
+
+Creating an address file alinged with the google geocoding requirements
+```{r, eval=FALSE}
+# loading sample address file, creating input_address var and dropping unnecessary vars for google geocoding
+dat <- read.csv("Data/7_Disambiguation/3_GeocodeAcc/SampleTest-1_NPO.csv", stringsAsFactors = FALSE, colClasses="character")
+
+dat$input_address <- paste(dat$Address, dat$City, dat$State, dat$Zip, sep = ", ")
+
+# removing unwanted columns
+names(dat)
+dat <- dat[,c(1,6)]
+
+# saving input file
+saveRDS(dat, "Data/7_Disambiguation/3_GeocodeAcc/SampleTest-2_NPO.rds")
+```
+
+Geocoding
+```{r,eval=FALSE}
+library( ggmap ) 
+api <- readLines("../google1.api") # reading my personal API key from a local file
+
+register_google(key = api) #The register_google function stores the API key.
+getOption("ggmap") #summarises the Google credentials to check how you are connected.
+res <- mutate_geocode(dat, input_address, output = "latlona", source = "google", messaging = T) #generates an object where the original dataset is binded with the geocode results.
+
+# saveRDS(res, "Data/7_Disambiguation/3_GeocodeAcc/SampleTest-2_NPO_results.rds")
+```
+
+Changing names and classes as needed
+```{r, eval=FALSE}
+# loading results
+res <- readRDS("Data/7_Disambiguation/3_GeocodeAcc/SampleTest-2_NPO_results.rds")
+
+#fixing class types
+res$key <- as.numeric(res$key)
+
+# how many NAs?
+sum(is.na(res$lat)) # none had no match in the census geocode
+
+# adding ggl to var names for easy id
+x <- names(res)
+x <- paste0("ggl_",x)
+x[1] <- "key"
+names(res) <- x
+```
+
+Binding
+```{r, eval=FALSE}
+add <- left_join(add, res, by = "key")
+# saveRDS(add, "Data/7_Disambiguation/3_GeocodeAcc/Add-sample-NPOv2.rds")
+```
+
+### 3.1.4 IPUMS GEOMARKER geocoding
+
+We used the IPUMS Geomarker to geocode addressess. This involves a manual process through their [website](https://geomarker.ipums.org/geocoding)
+
+Loading the results
+```{r, eval=FALSE}
+# code to load compiled results, just in case
+# add <- readRDS("Data/7_Disambiguation/3_GeocodeAcc/Add-sample-NPOv2.rds")
+
+res <- read.csv( "Data/7_Disambiguation/3_GeocodeAcc/SampleTest-3_NPO_results.csv", header=T, stringsAsFactors=F, colClasses="character")
+
+# removing unnecessary vars (the geocoding included census data, which we don't need right now)
+names(res)
+res <- select(res, key, latitude, longitude, MatchType, GeocodeNote, NAACCRGISCoordinateQualityName, GISJOIN, STATE, STATEA, COUNTY, COUNTYA, TRACTA)
+
+# changing lat/lon names names
+names(res)[2] <- "lat"
+names(res)[3] <- "lon"
+
+#fixing class types
+res$key <- as.numeric(res$key)
+res$lat <- as.numeric(res$lat)
+res$lon <- as.numeric(res$lon)
+
+# adding ipums to var names for easy id
+x <- names(res)
+x <- paste0("ipums_",x)
+x[1] <- "key"
+names(res) <- x
+```
+
+Binding results to sample address file
+```{r, eval=FALSE}
+add <- left_join(add, res, by = "key")
+
+# Saving the new version of the npo.main file
+# saveRDS(add, "Data/7_Disambiguation/3_GeocodeAcc/Add-sample-NPOv3.rds")
+```
+
+### 3.1.5 TAMU geocoding
+We also used the TAMU geocoding service ([link](https://geoservices.tamu.edu/Services/))
+
+Loading the results
+```{r, eval=FALSE}
+# code to load compiled results, just in case
+# add <- readRDS("Data/7_Disambiguation/3_GeocodeAcc/Add-sample-NPOv3.rds")
+
+res <- read.csv( "Data/7_Disambiguation/3_GeocodeAcc/SampleTest-4_NPO_results.csv", header=T, stringsAsFactors=F, colClasses="character")
+
+table(res$Source) # all results came from USCGeocoder
+table(res$MatchedLocationType) # all results are LOCATION_TYPE_STREET_ADDRESS 
+table(res$TieHandlingStrategyType) # return all
+table(res$GeocodeQualityType) # return all
+
+
+# removing unnecessary vars
+names(res)
+
+res <- select(res, key, naaccrQualType, FeatureMatchingResultType, FeatureMatchingGeographyType, MatchScore, GeocodeQualityType, Latitude, Longitude, MatchType, CensusTract, naaccrCertType, FCity, FState, MCity, MState, PCity, PState)
+
+# changing lat/lon names names
+names(res)[7] <- "lat"
+names(res)[8] <- "lon"
+
+str(res)
+#fixing class types
+res$key <- as.numeric(res$key)
+res$lat <- as.numeric(res$lat)
+res$lon <- as.numeric(res$lon)
+
+# adding tamu to var names for easy id
+x <- names(res)
+x <- paste0("tamu_",x)
+x[1] <- "key"
+names(res) <- x
+```
+
+Binding results to sample address file
+```{r, eval=FALSE}
+add <- left_join(add, res, by = "key")
+
+# Saving the new version of the npo.main file
+# saveRDS(add, "Data/7_Disambiguation/3_GeocodeAcc/Add-sample-NPOv4.rds")
+```
+
+#### Testing the API - EXTRA PENDING!
+
+TAMU also offers an API, but I think its for individual transactions only, not batch.
+```{r, eval=FALSE}
+# temporarily setting the working directory for geocode
+wd2 <- paste0(wd, "/Data/7_Disambiguation/3_GeocodeAcc")
+setwd(wd2)
+dir()
+
+# parsed api: apiurl <- "https://geoservices.tamu.edu/Services/Geocode/WebService/GeocoderService_V04_01.asmx"
+
+# We use non parsed
+apiurl <- "https://geoservices.tamu.edu/Services/Geocode/WebService/GeocoderWebServiceHttpNonParsed_V04_01.aspx?"
+
+addressFile <- "SampleTest-3_NPO.csv"
+
+# geocode query
+resp <- POST( apiurl, 
+              body=list(streetAddress = "2301 Cathedral Ave NW",
+                        city = "Washington",
+                        state= "DC",
+                        zip= "20008",
+                        apiKey= "0431f2a40da948f580b51647ec5764cf",
+                        version= "4.01",
+                        shouldCalculateCensus=TRUE,
+                        censusYear= "2010",
+                        shouldReturnReferenceGeometry= FALSE,
+                        shouldNotStoreTransactionDetails= TRUE), 
+              encode="multipart" )
+
+content(resp)
+
+setwd(wd)
+```
+
+
+### 3.1.5  Comparing results
+
+Loading the file
+```{r, eval=FALSE}
+# code to load compiled resuls, just in case
+# add <- readRDS("Data/7_Disambiguation/3_GeocodeAcc/Add-sample-NPOv2.rds")
+
+
+```
+
+
+(a) how many failed in each service? (what was the original failing rate of census?)
+(b) how many discrepancies
+(c) manual check of 50 using gmaps
+(d) any outliers or interesting add to see
+(e) Manually checking in gmaps the discrepancies
+
+
+### 3.1.6 Census geocode Compare means of demographics - IS THIS A GOOD IDEA?
+Testing if there is statistical difference in average demographic data (census) using the different sources of a sample.
+
+
+## 3.2 Comparing 1000 PPL geocodes
+
+T-test to compare two means
+Sample of two populations.
+
+Signal/noise = difference between group means / variability of groups (variance)
+
+
+# 4. Exploring POBs
+
+* How much worse is zip code level data than census tract data?
+* How many census tracts are in the average zip code?
+* Can we run a simulation study using a set of complete addresses and compare zip code profiles to census tract profiles? 
+* Also include the PO Box census tract only (as opposed to ZIP for PO Box) to see if better or worse. (see note about POBs that have addresses and others that are just the POB - would it be possible for these to geocode to POB census tract?)
+* How do we know a PO box is near the place of residence of board members? 
+* Can we do a small sample and test this assumption by looking up home addresses online? 
+
+Note:
+some POBs are embedded in complete addresses, we need to identify these, and separate them from the address to geocode. The question still remains whether the pob address counts for a residential address to use its demographics. 
+how to distinguish between an address of the pob and and address plus the pob? probably they are all pob addresses right? does it makes sense to use the zip or the address?
+
+Regarding the small addresses that had only POBs these are good to goecode using zip.however, the question still pending is whether this proxy makes sense or not. 
+when doing the test, is zip of a pob the same as a zip of a non pob? because we are making the same assumption on both.
+
+
+---
+basically we need to understand if this makes sense and see if we can update the approach to a more accurate one.
+
+what are POBs?, how do they work? people have a POB close to their work? can the demographics of your POB say something relevant? is a POB come from a lawyer address? should we have a variable for addresses identified as business/lawyers?
+
+Strategy:
+o	POBs that only have a box number ->  zip code or city center. (how do you actually send something to a POB if it only shows a number?)
+o	POBs that have an addresses -> isolate address, geocode and compare with zip – a sample could be tested against manual geocoding.
+
+we are using zipcodes for POBs, but we could also use the addresses for those who have.
+
+NLP analysis: How POBs have addresses? can we isolate them and, then, can we run their addresess through the Google service? what does this mean? are POBs even their home address?
+
+
+## 4.1 Geocoding POBs with Google
+
+Loading files
+```{r, eval=FALSE}
+#npo <- readRDS("Data/5_ZipandCity/NONPROFITS-2014-2019v5.rds")
+#ppl <- readRDS("Data/5_ZipandCity/PEOPLE-2014-2019v5.rds")
+```
+
+Subsetting NPO Pobs
+```{r, eval= FALSE}
+x <- which(npo$pob == 1)
+npo.pob <- npo[x,]
+
+plot(table(npo.pob$add.len))
+# going to geocode two sets: one at the peak of the distribution and the other the extensive addresses. 
+
+# peak 
+x <- npo.pob$add.len %in% c(8:14)
+smp1 <- npo.pob[x,]
+
+# only keeping key and input_address
+smp1 <- smp1[,c(2,73)]
+
+#sampling
+x <- nrow(smp1)
+x <- sample(x, 100, replace = FALSE, )
+smp1 <- smp1[x,]
+
+saveRDS(smp1, "Data/7_ProcessReport/smp1.rds")
+
+# long
+x <- npo.pob$add.len > 14
+smp2 <- npo.pob[x,]
+
+# only keeping key and input_address
+smp2 <- smp2[,c(2,73)]
+
+#sampling
+x <- nrow(smp2)
+x <- sample(x, 100, replace = FALSE, )
+smp2 <- smp2[x,]
+
+saveRDS(smp2, "Data/7_ProcessReport/smp2.rds")
+
+#binding and saving for geocode
+smp <- rbind(smp1, smp2)
+rownames(smp) <- NULL
+saveRDS(smp, "Data/7_ProcessReport/smp.rds")
+```
+
+Geocoding Sample
+```{r, eval=F}
+# loading sample
+smp <- readRDS("Data/7_ProcessReport/smp.rds")
+
+# loading API 
+api <- readLines("../google2.api")
+
+# Geocoding through google. This will generate an object where the priginal dataset is binded with the geocode results.
+register_google(key = api) #The register_google function stores the API key.
+getOption("ggmap") #summarises the Google credentials to check how you are connected.
+smp.res <- mutate_geocode(smp, input_address, output = "latlona", source = "google", messaging = T) 
+
+#saving results 
+#saveRDS(smp.res, "Data/7_ProcessReport/smp_res.rds") # change the name of the file accordingly
+```
+
+```{r}
+#dat <- readRDS("Data/7_ProcessReport/smp_res.rds") # change the name of the file accordingly
+
+```
+
+What are the possible implications of POBs demographic data in our analysis?
+
+
+# 5. Testing our use of Zip and City centroids
+
+Failed addresses + POBS are geocoded using zip centroids.
+
+NOTE: *he basic idea to test the use of Zip Codes would be to create a sample of census tracts that we have data for (maybe 100,000 cases?). Then create a copy with IDs and zip codes only, merge the census data in, then we can run a paired t-test on all of the census variables to see if the means differ greatly if we draw data from tracts versus zip codes.* 
+
+Zipcodes are routes for postal delivery not spatial polygons (what else does the census say?)
+
+IPUMS NHIS zipcode level data. IPUMS mentioned the NIH dataset had something for zipcodes. Using ipums nhis service where they have census contex data by zipcode? (instead of the census tract that the zip centroid overlayed)
+
+We have used zip and city centroids for cases when the address data is not available. 
+How reasonable is it to take this approach? what are the consequences?
+
+•	Testing the validity of using zipcodes or city centroids for census data. 
+Get a sample of cases with addresses and get geocodes for their addresses vs geocodes for the zipz/cities. Is there a significant difference between demographic data? (census tract) vs. Zipcode or city centroid?
+
+* Comparing the geocode accuracy of using Zips and City instead of an actual address
+POBs? zipz? centroids?
+* manually checking for the precision of addresses that are an output of geocoding process:
+* testing if there is statistical difference using census data from the different sources of a sample.
+
+
+-------------
+
+# 6. Limitations
+
+What are the data gaps and limitations of the dataset? 
+
+
+# 7. Additional Tests
+## 7.1 EXTRA: Getting census data using the Census API instead of using IPUMS
+
+```{r, eval=FALSE}
+# install.packages("tidycensus")
+# install.packages("RJSONIO")
+library( tidycensus )
+library( RJSONIO )
+library( readr )
+
+x <- readLines("../census.api")
+
+d <- read_table(paste0("https://api.census.gov/data/2018/acs/acs5/profile?get=DP04_0001E&for=county:*&key=",x), )
+```
+
+
+

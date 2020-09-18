@@ -1,0 +1,530 @@
+---
+title: "Step 5: Geocoding Zips and POBs"
+date: "09/06/2020"
+output:
+  html_document:
+    theme: united
+    df_print: paged
+    highlight: tango
+    smart: false
+    toc: yes
+    toc_float: yes
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning=F, message=F, fig.width=8)
+```
+
+# Introduction
+
+In this script we will geocode POBs and failed addresses using zip and city centroids. The new dataset will be saved as a new version of the main files:
+
+* **NONPROFITS-2014-2019v5.rds**
+* **PEOPLE-2014-2019v5.rds**
+
+**STEPS**
+
+(1) Geocoding with zip code centroids: we will add zip code centroids to the NPO and PPL files.
+(2) Geocoding with city centroids: city centroids will be added.
+(3) Generating a final lat lon variable.
+(4) Exploring the results
+
+**PACKAGES**
+```{r}
+#setting up the environment
+library( dplyr )
+library( tidyr )
+library( pander )
+
+# update the path with your working directory:
+wd <- "/Users/icps86/Dropbox/R Projects/Open_data_ignacio"
+setwd(wd)
+```
+
+
+# 1. Adding Zipcode Centroids
+
+## 1.1 Loading zipcodes
+
+i) Loading the zip-code-centroid data to use in throughout the script
+
+INTERNAL NOTE: this zipcodes were provided by Prof Lecy.
+
+```{r}
+zips1 <- readRDS("Data/5_ZipandCity/zips1.rds")
+names(zips1) <- c("Zip", "lat_zip1", "lon_zip1")
+```
+
+ii) Loading a secondary zip-code-centroid data to use in throughout the script
+
+The zips are from this webpage:
+https://public.opendatasoft.com/explore/dataset/us-zip-code-latitude-and-longitude/export/
+
+```{r, eval=FALSE}
+# this chunk generates a local file
+zips2 <- read.csv("https://public.opendatasoft.com/explore/dataset/us-zip-code-latitude-and-longitude/download/?format=csv&timezone=America/New_York&use_labels_for_header=true", sep=';', stringsAsFactors = F, colClasses= c("character", "character", "character", "numeric", "numeric", "integer", "integer", "character"))
+
+# removing some columns we dont need
+zips2 <- zips2[,c(1:5)] 
+
+# saving it as an RDS 
+saveRDS(zips2, "Data/5_ZipandCity/zips2.rds")
+
+```
+
+Loading file
+```{r}
+zips2 <- readRDS("Data/5_ZipandCity/zips2.rds")
+names(zips2) <- c("Zip", "City_zip2", "State_zip2", "lat_zip2", "lon_zip2")
+```
+
+## 1.2 NPO dataset
+
+Adding zips centroids to the files:
+
+* **NONPROFITS-2014-2019v4.rds** 
+* **PEOPLE-2014-2019v4.rds**
+
+The dataset with new geocodes will be saved as:
+
+* **NONPROFITS-2014-2019v5.rds**
+* **PEOPLE-2014-2019v5.rds**
+
+Loading NPO main file
+```{r}
+setwd(wd)
+npo.main <- readRDS("Data/4_GeoGoogle/NONPROFITS-2014-2019v4.rds")
+```
+
+Adding Zip1 and Zip2 geocode data and adding a geocode_type value
+```{r}
+#zip1
+npo.main <- left_join(npo.main, zips1, by = "Zip")
+x <- which(is.na(npo.main$geocode_type)==TRUE & is.na(npo.main$lat_zip1)==FALSE)
+npo.main$geocode_type[x] <- "zip1"
+
+#zip2
+npo.main <- left_join(npo.main, zips2, by= "Zip")
+x <- which(is.na(npo.main$geocode_type)==TRUE & is.na(npo.main$lat_zip2)==FALSE)
+npo.main$geocode_type[x] <- "zip2"
+
+table(npo.main$geocode_type, useNA = "ifany") %>% pander()
+```
+
+Only `r sum(is.na(npo.main$geocode_type))` addresses have no geocode.
+
+Saving file
+```{r}
+saveRDS(npo.main, "Data/5_ZipandCity/NONPROFITS-2014-2019v5.rds")
+```
+
+
+## 1.3 PPL dataset
+
+Loading PPL main file
+```{r}
+setwd(wd)
+ppl.main <- readRDS("Data/4_GeoGoogle/PEOPLE-2014-2019v4.rds")
+```
+
+Adding Zip1 and Zip2 geocode data and geocode_type value
+```{r}
+#zip1
+ppl.main <- left_join(ppl.main, zips1, by = "Zip")
+x <- which(is.na(ppl.main$geocode_type)==TRUE & is.na(ppl.main$lat_zip1)==FALSE)
+ppl.main$geocode_type[x] <- "zip1"
+
+#zip2
+ppl.main <- left_join(ppl.main, zips2, by= "Zip")
+x <- which(is.na(ppl.main$geocode_type)==TRUE & is.na(ppl.main$lat_zip2)==FALSE)
+ppl.main$geocode_type[x] <- "zip2"
+
+table(ppl.main$geocode_type, useNA = "ifany") %>% pander()
+```
+
+Only `r sum(is.na(ppl.main$geocode_type))` addresses have no geocode.
+
+Saving file
+```{r}
+saveRDS(ppl.main, "Data/5_ZipandCity/PEOPLE-2014-2019v5.rds")
+```
+
+
+# 2. Adding City centroids to the remaining addresses
+
+Getting City Centroids from:
+https://public.opendatasoft.com/explore/dataset/1000-largest-us-cities-by-population-with-geographic-coordinates/table/?sort=-rank 
+
+Note: City names may be repeated across the US, so we need to look at the state to be certain we are matching the precise one.
+
+```{r, eval=F}
+# getting city data from source
+city <- read.csv("https://public.opendatasoft.com/explore/dataset/1000-largest-us-cities-by-population-with-geographic-coordinates/download/?format=csv&timezone=America/New_York&use_labels_for_header=true", sep=';', stringsAsFactors = F)
+
+x <- city$Coordinates
+x <- strsplit(x, ",")
+x <- data.frame(matrix(unlist(x), nrow=1000, byrow=T),stringsAsFactors=FALSE)
+city <- cbind(city,x)
+colnames(city)[7:8] <- c("Lat", "Lon")
+city$Lat <- as.numeric(city$Lat)
+city$Lon <- as.numeric(city$Lon)
+city$State <- state.abb[match(city$State,state.name)]
+city <- city[,c(1,3,7,8)]
+city$City <- toupper(city$City)
+
+names(city) <- c("City", "State_cty", "lat_cty", "lon_cty")
+
+# Cities repeat unless we include the state
+city$city_st <- paste(city$City, city$State_cty, sep= ", ")
+
+# saving 
+saveRDS(city, "Data/5_ZipandCity/cities-geo.rds")
+```
+
+Loading the city file
+```{r}
+city <- readRDS("Data/5_ZipandCity/cities-geo.rds")
+```
+
+Cities repeat unless we use the city+state:
+
+* `r duplicated(city$City) %>% sum()` duplicated cities. 
+* `r duplicated(city$city_st) %>% sum()` duplicated city_st
+
+Preparing the file for merge, removing unwanted vars 
+
+```{r}
+city <- city[,c(5,3,4)]
+```
+
+
+## 2.1 City centriods for NPO dataset 
+
+Creating a city_st variable in the NPO dataset
+```{r}
+npo.main$city_st <- paste(npo.main$City, npo.main$State, sep= ", ")
+```
+
+Now merging with main npo data
+```{r}
+npo.main <- left_join(npo.main, city, by= "city_st")
+```
+
+Adding a geocode_type value
+```{r}
+x <- which(is.na(npo.main$geocode_type)==TRUE & is.na(npo.main$lat_cty)==FALSE)
+npo.main$geocode_type[x] <- "city"
+
+table(npo.main$geocode_type, useNA = "ifany") %>% pander()
+```
+
+Only `r sum(is.na(npo.main$geocode_type))` addresses have no geocode.
+
+Saving file
+```{r}
+saveRDS(npo.main, "Data/5_ZipandCity/NONPROFITS-2014-2019v5.rds")
+```
+
+
+## 2.2 City centroids for PPL Dataset 
+
+Creating a city_st variable in the PPL dataset
+```{r}
+ppl.main$city_st <- paste(ppl.main$City, ppl.main$State, sep= ", ")
+```
+
+Now merging with main npo data
+```{r}
+ppl.main <- left_join(ppl.main, city, by= "city_st")
+```
+
+Adding a geocode_type value
+```{r}
+x <- which(is.na(ppl.main$geocode_type)==TRUE & is.na(ppl.main$lat_cty)==FALSE)
+ppl.main$geocode_type[x] <- "city"
+table(ppl.main$geocode_type, useNA = "ifany") %>% pander()
+```
+
+Only `r sum(is.na(ppl.main$geocode_type))` addresses have no geocode.
+
+Saving file
+```{r}
+saveRDS(ppl.main, "Data/5_ZipandCity/PEOPLE-2014-2019v5.rds")
+```
+
+
+# 3. Generating a Final lat and lon value
+
+Geocode information has comes from different sources. As the database evolves over time, geocodes might be updated. Which geocode source we use when available can be summarized in the geocode prioritization list below:
+
+1. Google
+2. Census
+3. Zip (Zip1 > Zip2)
+4. City
+
+**Note:** for more detail on this priority list see the Research Note.
+
+Following this list, we will generate Lat and Lon variables in each data set.
+
+## 3.1 NPOs
+
+Loading file
+```{r, eval=FALSE}
+npo.main <- readRDS("Data/5_ZipandCity/NONPROFITS-2014-2019v5.rds")
+```
+
+Creating the new variables
+```{r}
+npo.main$lat <- NA
+npo.main$lon <- NA
+```
+
+Now adding the prioritized lat/lon data by overwritting the values in the priority order. 
+```{r}
+npo.main$geocode_type <- NA
+
+# city
+x <- which(is.na(npo.main$lat_cty) == FALSE)
+npo.main$lat[x] <- npo.main$lat_cty[x]
+npo.main$lon[x] <- npo.main$lon_cty[x]
+npo.main$geocode_type[x] <- "city"
+
+# zip2
+x <- which(is.na(npo.main$lat_zip2) == FALSE)
+npo.main$lat[x] <- npo.main$lat_zip2[x]
+npo.main$lon[x] <- npo.main$lon_zip2[x]
+npo.main$geocode_type[x] <- "zip2"
+
+# zip1
+x <- which(is.na(npo.main$lat_zip1) == FALSE)
+npo.main$lat[x] <- npo.main$lat_zip1[x]
+npo.main$lon[x] <- npo.main$lon_zip1[x]
+npo.main$geocode_type[x] <- "zip1"
+
+# census
+x <- which(is.na(npo.main$lat_cen) == FALSE)
+npo.main$lat[x] <- npo.main$lat_cen[x]
+npo.main$lon[x] <- npo.main$lon_cen[x]
+npo.main$geocode_type[x] <- "census"
+
+# google
+x <- which(is.na(npo.main$lat_ggl) == FALSE)
+npo.main$lat[x] <- npo.main$lat_ggl[x]
+npo.main$lon[x] <- npo.main$lon_ggl[x]
+npo.main$geocode_type[x] <- "google"
+```
+
+Checking to see the information is consistent
+```{r}
+# checking the number of NAs
+x <- is.na(npo.main$lat_cty) &
+  is.na(npo.main$lat_zip2) &
+  is.na(npo.main$lat_zip1) &
+  is.na(npo.main$lat_cen) &
+  is.na(npo.main$lat_ggl)
+x %>% table()
+
+table(is.na(npo.main$lat))
+
+# checking using geocode_type
+table(npo.main$geocode_type, useNA = "ifany")
+
+# google
+x <- which(npo.main$geocode_type == "google")
+x <- npo.main$lat[x] == npo.main$lat_ggl[x]
+table(x, useNA = "ifany")
+
+# census
+x <- which(npo.main$geocode_type == "census")
+x <- npo.main$lat[x] == npo.main$lat_cen[x]
+table(x, useNA = "ifany")
+
+# zip1
+x <- which(npo.main$geocode_type == "zip1")
+x <- npo.main$lat[x] == npo.main$lat_zip1[x]
+table(x, useNA = "ifany")
+
+# zip2
+x <- which(npo.main$geocode_type == "zip2")
+x <- npo.main$lat[x] == npo.main$lat_zip2[x]
+table(x, useNA = "ifany")
+
+# cty
+x <- which(npo.main$geocode_type == "city")
+x <- npo.main$lat[x] == npo.main$lat_cty[x]
+table(x, useNA = "ifany")
+```
+
+Saving the file
+```{r}
+saveRDS(npo.main, "Data/5_ZipandCity/NONPROFITS-2014-2019v5.rds")
+```
+
+## 3.2 PPL
+
+Loading file
+```{r, eval=FALSE}
+ppl.main <- readRDS("Data/5_ZipandCity/PEOPLE-2014-2019v5.rds")
+```
+
+Creating the new variables
+```{r}
+ppl.main$lat <- NA
+ppl.main$lon <- NA
+```
+
+Now adding the prioritized lat/lon data by overwritting the values in the priority order. 
+```{r}
+ppl.main$geocode_type <- NA
+
+# city
+x <- which(is.na(ppl.main$lat_cty) == FALSE)
+ppl.main$lat[x] <- ppl.main$lat_cty[x]
+ppl.main$lon[x] <- ppl.main$lon_cty[x]
+ppl.main$geocode_type[x] <- "city"
+
+# zip2
+x <- which(is.na(ppl.main$lat_zip2) == FALSE)
+ppl.main$lat[x] <- ppl.main$lat_zip2[x]
+ppl.main$lon[x] <- ppl.main$lon_zip2[x]
+ppl.main$geocode_type[x] <- "zip2"
+
+# zip1
+x <- which(is.na(ppl.main$lat_zip1) == FALSE)
+ppl.main$lat[x] <- ppl.main$lat_zip1[x]
+ppl.main$lon[x] <- ppl.main$lon_zip1[x]
+ppl.main$geocode_type[x] <- "zip1"
+
+# census
+x <- which(is.na(ppl.main$lat_cen) == FALSE)
+ppl.main$lat[x] <- ppl.main$lat_cen[x]
+ppl.main$lon[x] <- ppl.main$lon_cen[x]
+ppl.main$geocode_type[x] <- "census"
+
+# google
+x <- which(is.na(ppl.main$lat_ggl) == FALSE)
+ppl.main$lat[x] <- ppl.main$lat_ggl[x]
+ppl.main$lon[x] <- ppl.main$lon_ggl[x]
+ppl.main$geocode_type[x] <- "google"
+```
+
+Checking to see the information is consistent
+```{r}
+# checking the number of NAs
+x <- is.na(ppl.main$lat_cty) &
+  is.na(ppl.main$lat_zip2) &
+  is.na(ppl.main$lat_zip1) &
+  is.na(ppl.main$lat_cen) &
+  is.na(ppl.main$lat_ggl)
+x %>% table()
+
+table(is.na(ppl.main$lat))
+
+# checking using geocode_type
+table(ppl.main$geocode_type, useNA = "ifany")
+
+# google
+x <- which(ppl.main$geocode_type == "google")
+x <- ppl.main$lat[x] == ppl.main$lat_ggl[x]
+table(x, useNA = "ifany")
+
+# census
+x <- which(ppl.main$geocode_type == "census")
+x <- ppl.main$lat[x] == ppl.main$lat_cen[x]
+table(x, useNA = "ifany")
+
+# zip1
+x <- which(ppl.main$geocode_type == "zip1")
+x <- ppl.main$lat[x] == ppl.main$lat_zip1[x]
+table(x, useNA = "ifany")
+
+# zip2
+x <- which(ppl.main$geocode_type == "zip2")
+x <- ppl.main$lat[x] == ppl.main$lat_zip2[x]
+table(x, useNA = "ifany")
+
+# cty
+x <- which(ppl.main$geocode_type == "city")
+x <- ppl.main$lat[x] == ppl.main$lat_cty[x]
+table(x, useNA = "ifany")
+```
+
+Saving the file
+```{r}
+saveRDS(ppl.main, "Data/5_ZipandCity/PEOPLE-2014-2019v5.rds")
+```
+
+# 4. Exploring data
+
+```{r, eval=FALSE}
+npo.main <- readRDS("Data/5_ZipandCity/NONPROFITS-2014-2019v5.rds")
+ppl.main <- readRDS("Data/5_ZipandCity/PEOPLE-2014-2019v5.rds")
+```
+
+## 4.1 Summary of geocoding types
+
+For the NPO dataset
+```{r}
+x <- table(npo.main$geocode_type, useNA = "ifany")
+y <- prop.table(x)
+summary <- as.data.frame(t(rbind(x,y)))
+colnames(summary) <- c("frequency", "percent")
+summary[nrow(summary)+1,] <- c(sum(summary$frequency), 1)
+summary$percent <- paste0(round(summary$percent*100,2)," %")
+rownames(summary)[nrow(summary)] <- "TOTAL"
+summary <- summary[c(3,1,4,5,2,6,7),]
+pander(summary)
+```
+
+* Google and Census geocodes add up to `r round(100 * unname(y[1] + y[3]),1)`%
+* While zips and city add to `r round(100 * unname(y[2] + y[4] + y[5]),1)`%
+
+For the PPL dataset
+```{r}
+x <- table(ppl.main$geocode_type, useNA = "ifany")
+y <- prop.table(x)
+summary <- as.data.frame(t(rbind(x,y)))
+colnames(summary) <- c("frequency", "percent")
+summary[nrow(summary)+1,] <- c(sum(summary$frequency), 1)
+summary$percent <- paste0(round(summary$percent*100,2)," %")
+rownames(summary)[nrow(summary)] <- "TOTAL"
+summary <- summary[c(3,1,4,5,2,6,7),]
+pander(summary)
+```
+
+* Google and Census geocodes add up to `r round(100 * unname(y[1] + y[3]),1)`%
+* While zips and city add to `r round(100 * unname(y[2] + y[4] + y[5]),1)`%
+
+Zips2 matches more than Zips. 
+```{r}
+x <- c(sum(!is.na(npo.main$lat_zip1)), sum(!is.na(npo.main$lat_zip2)))
+dat <- data.frame(zips = c("zip1", "zip2"), matches = x, row.names = NULL)
+dat$percent <- paste(round((dat$matches / nrow(npo.main))*100, 1), "%")
+dat %>% pander()
+
+```
+
+Are the lat lon the same between zips1 and zips2?
+```{r}
+table( npo.main$lat_zip1 == npo.main$lat_zip2, useNA = "ifany") %>% pander()
+```
+
+Is the city the same between original data and the city inducted from the zip file (zips2)?
+```{r}
+x <- toupper(npo.main$City)
+y <- toupper(npo.main$City_zip2)
+
+table( x == y, useNA = "ifany") %>% pander()
+round(prop.table(table( x == y, useNA = "ifany"))*100,1)  %>% pander()
+```
+
+Is the State the same between original and the state inducted from the zip file (zips2)?
+```{r}
+x <- toupper(npo.main$State)
+y <- toupper(npo.main$State_zip2)
+
+table( x == y, useNA = "ifany") %>% pander()
+round(prop.table(table( x == y, useNA = "ifany"))*100,1)  %>% pander()
+```

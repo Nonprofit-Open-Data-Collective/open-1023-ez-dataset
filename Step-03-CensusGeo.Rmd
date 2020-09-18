@@ -1,0 +1,883 @@
+---
+title: "Step 3: Geocoding Addresses through Census"
+date: "3/19/2019"
+output:
+  html_document:
+    theme: united
+    df_print: paged
+    highlight: tango
+    smart: false
+    toc: yes
+    toc_float: yes
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning=F, message=F, fig.width=8)
+```
+
+# Introduction
+
+**PENDING**
+
+* Fix results files
+* provide intro to census service and info on added variables and results (no match exact non exact, tie, etc.)
+* Include troubleshooting section with examples
+* what happened to the addresses that are "----"? and what happened to the NPO IDs that are not unique? 
+
+In this script we will geocode NPO and PPL addresses using the Census Bureau geocoding service. The new dataset will be saved as a new version of the main files **NONPROFITS-2014-2019v3.rds** and **PEOPLE-2014-2019v3.rds**.
+
+**STEPS**
+
+(1) We will load the **NONPROFIT-2014-2019v2.rds** and **PEOPLE-2014-2019v2.rds** files and produce input files **NPOAddresses_census.rds** and **PPLAddresses_census.rds**. These hold the data that will be passed through the geocoding service.
+(2) Intro and demo of the Census geocoding service. 
+(3) Geocoding NPO addressess (**NPOAddresses_census.rds**) through the Census geocoding service. The script will yield raw output file **NPOAddresses_censusGEO.rds**. The new geocode information will be integrated into a new version of the main file **NONPROFIT-2014-2019v3.rds** 
+(4) Geocoding PPL addressess (**PPLAddresses_census.rds**) through the Census geocoding service. The script will yield raw output file **PPLAddresses_censusGEO.rds**. The new geocode information will be integrated into a new version of the main file **PEOPLE-2014-2019v3.rds**
+(5) Troubleshooting
+
+**NOTES**
+
+* This script includes a troubleshooting section. 
+* Geocoding can take several hours, for this reason some code chunks in this script are not evaluated. Outputs yielded from the process are loaded from stored files to ilustrate the results.
+
+**PACKAGES**
+```{r}
+library( dplyr )
+library( tidyr )
+library( pander )
+library( httr )
+
+# update the path with your working directory:
+wd <- "/Users/icps86/Dropbox/R Projects/Open_data_ignacio"
+setwd(wd) 
+```
+
+
+# 1. Subsetting input files
+
+For the Census geocoding, addresses should be formatted in the following fields:
+
+* Unique ID,
+* House Number and Street Name,
+* City,
+* State,
+* ZIP Code
+
+CREATING Address files **NPOAddresses_census.rds** and **PPLAddresses_census.rds**
+
+## 1.1 Creating a NPO input_address dataset
+
+**Note that the census passes thourgh the column names in the csv as addresses to geocode**
+
+```{r}
+npo <- readRDS( "Data/2_InputData/NONPROFITS-2014-2019v2.rds" )
+
+npo$input_address <- paste(npo$Address, npo$City, npo$State, npo$Zip, sep = ", ") #creating an input_address field to match the geocode dataframes
+npo <- npo[,c(1,73,12:15,71)]
+npo$ID <- 0
+npo <- unique(npo)
+npo <- npo[order(npo$input_address),]
+npo$ID <- 1:nrow(npo)
+rownames(npo) <- NULL
+
+saveRDS(npo, "Data/3_GeoCensus/NPOAddresses_census.rds") 
+```
+
+
+## 1.2 Creating a PPL input_address dataset 
+```{r}
+ppl <- readRDS( "Data/2_InputData/PEOPLE-2014-2019v2.rds" )
+
+ppl$input_address <- paste(ppl$Address, ppl$City, ppl$State, ppl$Zip, sep = ", ") #creating an input_address field to match the geocode dataframes
+
+ppl <- ppl[,c(1,21,11:14,19)]
+ppl$ID <- 0
+ppl <- unique(ppl)
+
+ppl <- ppl[order(ppl$input_address),]
+ppl$ID <- 1:nrow(ppl)
+rownames(ppl) <- NULL
+
+saveRDS(ppl, "Data/3_GeoCensus/PPLAddresses_census.rds") 
+
+```
+
+
+# 2. Demo: The Census Geocoding Service
+
+-ADD BRIEF DESCRIPTION-
+
+Additional information about the geocoding service can be found here:
+
+* DOCUMENTATION: https://www.census.gov/programs-surveys/geography.html
+* WEB GEOCODING SERVICE: https://geocoding.geo.census.gov/geocoder/geographies/addressbatch?form
+
+This section runs a Demo to test the code is working. Addresses should be formatted in the following fields:
+
+* Unique ID,
+* House Number and Street Name,
+* City,
+* State,
+* ZIP Code
+
+Geocode adds the following variables to the dataset:
+
+* match
+* match_type
+* out_address
+* lat_lon
+* tiger_line_id
+* tiger_line_side
+* state_fips
+* county_fips
+* tract_fips
+* block_fips
+* lon                        
+* lat  
+
+https://www.census.gov/programs-surveys/geography/technical-documentation/complete-technical-documentation/census-geocoder.html
+
+Geocode outputs from the Census can either be:
+The geocoder takes the address and determines the approximate location offset from the street centerline. An interpolated longitude/latitude coordinate is returned along with the address range the Census Bureau has on that stretch of road. That coordinate is then used to determine the geography that the address is within.
+If a Tie is encountered, there are multiple possible results for that address. The address can be input for single address geocoding to view the multiple results.
+
+Match/Exact
+Match/Non-Exact
+Tie
+No Match
+
+
+
+**Batch Geocoding**
+From:https://geocoding.geo.census.gov/geocoder/Geocoding_Services_API.pdf
+
+Geocoding can be accomplished in batch mode with submission of a .CSV, .TXT, .DAT, .XLS, or .XLSX
+formatted file. The file needs to be included as part of the HTTP request.
+The file must be formatted in the following way:
+Unique ID, Street address, City, State, ZIP
+If a component is missing from the dataset, it must still retain the delimited format with a null value.
+Unique ID and Street address are required fields.
+If there are commas that are part of one of the fields, the whole field needs to be enclosed in quote
+marks for proper parsing.
+There is currently an upper limit of 10000 records per batch file.
+The URL is as follows:
+https://geocoding.geo.census.gov/geocoder/returntype /addressbatch
+
+
+Required Parameters
+• returntype – locations(to get just geocoding response) or geographies(to get geocoding
+response as well as geoLookup). Independent geoLookup (“coordinates” above) is not currently
+an available batch option.
+• benchmark – A numerical ID or name that references what version of the locator should be
+searched. This generally corresponds to MTDB data which is benchmarked twice yearly. A full
+list of options can be accessed at https://geocoding.geo.census.gov/geocoder/benchmarks.
+The general format of the name is DatasetType_SpatialBenchmark. The valid values for these
+include:
+o DatasetType
+ Public_AR
+o SpatialBenchmark
+ Current
+ ACS2019
+ Census2010
+So a resulting benchmark name could be “Public_AR_Current”, “Public_AR_Census2010”, etc.
+Over time, there will always be a “Current” benchmark. It will change as the underlying dataset
+changes.
+• vintage – a numerical ID or name that references what vintage of geography is desired for
+the geoLookup (only needed when returntype = geographies). ). A full list of options for a given
+benchmark can be accessed at
+https://geocoding.geo.census.gov/geocoder/vintages?benchmark=benchmarkId. The general
+format of the name is GeographyVintage_SpatialBenchmark. The SpatialBenchmark variable
+should always match the same named variable in what was chosen for the benchmark
+parameter. The GeographyVintage can be Current, ACS2019, etc. So a resulting vintage name
+could be “ACS2019_Current”, “Current_Census2010”, etc. Over time, there will always be a
+“Current” vintage. It will change as the underlying dataset changes.
+• addressFile – An input of type “file” containing the addresses to be coded
+
+
+
+
+---------
+
+Loading the Board Members Dataset (PPL) dataset and subsetting only key variables to test the demo
+```{r,eval=FALSE}
+# loading rds
+ppl <- readRDS( "Data/3_GeoCensus/PPLAddresses_census.rds")
+
+# create a demo folder if needed:
+# dir.create( "Data/3_GeoCensus/demo" )
+
+# subsetting
+demo <- select( ppl, ID, Address, City, State, Zip )
+x <- sample(nrow(ppl),20, replace = FALSE)
+demo <- demo[ x, ]
+rownames(demo) <- NULL
+
+# writing a csv file with the address list to feed into the geocode process
+write.csv( demo, "Data/3_GeoCensus/demo/TestAddresses.csv", row.names=F )
+```
+
+In the following code chunk we are executing the geocode query and storing results as csv files.
+```{r,eval=FALSE}
+# temporarily setting the working directory for geocode
+wd2 <- paste0(wd, "/Data/3_GeoCensus/demo")
+setwd(wd2)
+
+# creating a url and file path to use in the geocode query
+apiurl <- "https://geocoding.geo.census.gov/geocoder/geographies/addressbatch"
+addressFile <- "TestAddresses.csv"
+
+# geocode query
+resp <- POST( apiurl, 
+              body=list(addressFile=upload_file(addressFile), 
+                        benchmark="Public_AR_Census2010",
+                        vintage="Census2010_Census2010",
+                        returntype="csv" ), 
+              encode="multipart" )
+
+# Writing results in a csv using writelines function
+var_names <- c( "id", "input_address", 
+                "match", "match_type", 
+                "out_address", "lat_lon", 
+                "tiger_line_id", "tiger_line_side", 
+                "state_fips", "county_fips", 
+                "tract_fips", "block_fips" )
+var_names <- paste(var_names, collapse=',')
+writeLines( text=c(var_names, content(resp)), con="ResultsDemo.csv" )
+
+# loading the results we wrote
+res <- read.csv( "ResultsDemo.csv", header=T, stringsAsFactors=F, colClasses="character" )
+
+# Splitting Latitude and longitude coordinates
+lat.lon <- strsplit( res$lat_lon, "," )
+
+for( i in 1:length(lat.lon) )
+  {
+  if( length( lat.lon[[i]] ) < 2 )
+  lat.lon[[ i ]] <- c(NA,NA) 
+  }
+
+m <- matrix( unlist( lat.lon ), ncol=2, byrow=T )
+colnames(m) <- c("lon","lat")
+m <- as.data.frame( m )
+
+res <- cbind( res, m )
+head( res )
+
+# writing results with splitted lat lon in another file
+write.csv( res, "ResultsDemo2.csv", row.names=F )
+
+setwd(wd)
+```
+
+Results look like this:
+```{r}
+res <- read.csv( "Data/3_GeoCensus/demo/ResultsDemo2.csv", header=T, stringsAsFactors=F, colClasses="character" )
+pander(head(res))
+```
+
+# 3. Geocoding Nonprofit (NPO) addresses
+
+Uploading the file **NPOAddresses_census.rds**
+```{r, eval=FALSE}
+npo <- readRDS( "Data/3_GeoCensus/NPOAddresses_census.rds" )
+```
+
+## 3.1 Dividing the addresses in batches of 500 each 
+```{r,eval=FALSE}
+# Create the folders to hold geocoding results if needed:
+# dir.create( "Data/3_GeoCensus/addresses_npo")
+# dir.create( "Data/3_GeoCensus/addresses_npo/2014-2019")
+
+#setting wd 
+wd2 <- paste0(wd, "/Data/3_GeoCensus/addresses_npo/2014-2019")
+setwd(wd2)
+
+# Selecting only essential variables
+npo <- select( npo, ID, Address, City, State, Zip )
+
+names( npo ) <- NULL  # we remove colnames because input file should not have names
+
+# Spliting address files into files with 500 addresses each
+loops <- ceiling( nrow( npo ) / 500 ) # ceiling function rounds up an integer. so loops has the amount of 500s that fit rounded up.
+
+# loop to extract by addressess in 500 batches
+for( i in 1:loops )
+  {
+  filename <- paste0( "AddressNPO",i,".csv" )
+  start.row <- ((i-1)*500+1) # i starts in 1 and this outputs: 1, 501, 1001, etc.
+  end.row <- (500*i) # this outputs 500, 1000, etc.
+  if( nrow(npo) < end.row ){ end.row <- nrow(npo) } # this tells the loop when to stop
+
+  # writing a line in the csv address file.
+  write.csv( npo[ start.row:end.row, ], filename, row.names=F )
+
+  # output to help keep track of the loop.
+  print( i )
+  print( paste( "Start Row:", start.row ) )
+  print( paste( "End Row:", end.row ) )
+} # end of loop.
+
+setwd(wd)
+```
+
+## 3.2 Geocoding NPO addresses
+
+The following code chunk will pass the addresses files produced through the census geocode srvice. This will output the following per each address file: 
+
+* **Rresults[i].csv**, with raw geocode results and 
+* **RresultsNPO[i].csv**, wich has the same data but with splitted lat/lon fields. 
+
+In addition, a **Geocode_Log.txt** will be created for the whole process.
+
+**Note:** Geocoding this amount of addresses will take significant hours. From our experience geocoding 1000 addresess took XXXX. ADD WHAT TO DO IF PROCESS HALTS IN THE MIDDLE
+
+```{r, eval=FALSE}
+# create a folder for npo census geocoding files if needed:
+# dir.create( "Data/3_GeoCensus/addresses_npo/2014-2019/Results" )
+
+# setting wd
+wd2 <- paste0(wd, "/Data/3_GeoCensus/addresses_npo/2014-2019")
+setwd(wd2)
+
+# producing LOG file
+log <- c("Query_Number", "Start_time", "Time_taken")
+log <- paste(log, collapse=',')
+log.name <- as.character(Sys.time())
+log.name <- gsub(":","-",log.name)
+log.name <- gsub(" ","-",log.name)
+log.name <- paste0("Results/Geocode_Log_",log.name,".txt")
+write(log, file=log.name, append = F)
+
+#Geocoding loop:
+for( i in 1:loops )
+  { 
+  #creating the objects used in each iteration of the loop: file name and api
+  addressFile <- paste0( "AddressNPO",i,".csv" ) 
+  apiurl <- "https://geocoding.geo.census.gov/geocoder/geographies/addressbatch"
+
+  #outputs in console to track loop
+  print( i )
+  print(Sys.time() )
+  start_time <- Sys.time()
+  
+  #Geocode query for i. Query is wrapped with try function to allow error-recovery
+  try( 
+    resp <- POST( apiurl, 
+                  body=list(addressFile=upload_file(addressFile),
+                            benchmark="Public_AR_Census2010",
+                            vintage="Census2010_Census2010",
+                            returntype="csv" ), 
+                            encode="multipart" )
+    )
+
+  #documenting ending times
+  end_time <- Sys.time()
+  print( end_time - start_time ) #ouputting in R console
+
+  #writing a line in the log file after query i ends
+  query <- as.character(i)
+  len <- as.character(end_time - start_time)
+  start_time <- as.character(start_time)
+  log <- c(query, start_time, len)
+  log <- paste(log, collapse=',')
+  write(log, file=log.name, append = T)
+
+  #constructing the Results[i].csv filename.
+  addressFile2 <- paste0( "Results/Results",i,".csv" ) 
+
+  #creating column names to include in the results csv file
+  var_names <- c( "id", "input_address",
+                  "match", "match_type", 
+                  "out_address", "lat_lon", 
+                  "tiger_line_id", "tiger_line_side", 
+                  "state_fips", "county_fips", 
+                 "tract_fips", "block_fips" )
+  v.names <- paste(var_names, collapse=',')
+  
+  #writing Rresults[i].csv, including headers
+  writeLines( text=c(v.names, content(resp)) , con=addressFile2 )
+
+  #reading file
+  res <- read.csv( addressFile2, header=T, 
+                 stringsAsFactors=F, 
+                 colClasses="character" )
+
+  # Splitting latitude and longitude values from results (res) to a variable (lat.lon)
+  lat.lon <- strsplit( res$lat_lon, "," )
+  
+  #adding NAs to lat.lon empty fields
+  for( j in 1:length(lat.lon) )
+    {
+    if( length( lat.lon[[j]] ) < 2 )
+      lat.lon[[ j ]] <- c(NA,NA)
+    }
+  
+  #tranforming the splitted lat.lons to columns that can be binded to a dataframe
+  m <- matrix( unlist( lat.lon ), ncol=2, byrow=T )
+  colnames(m) <- c("lon","lat")
+  m <- as.data.frame( m )
+  
+  #Adding lat and lon values to raw results and writing ResultsNpo[i].csv file
+  res <- cbind( res, m )
+  write.csv( res, paste0("Results/ResultsNPO",i,".csv"), row.names=F )
+  
+  } # end of loop
+
+# setting back wd
+setwd(wd)
+```
+
+## 3.3 Combining results Files
+
+This code chunk compiles all results and saves them into **NPOAddresses_censusGEO.rds**.
+```{r, eval=FALSE}
+# setting wd
+wd2 <- paste0(wd, "/Data/3_GeoCensus/addresses_npo/2014-2019/Results")
+setwd(wd2)
+
+#capturing filenames of all elements in dir() that have "ResultsNpo"
+x <- grepl("ResultsNpo", dir()) 
+these <- (dir())[x]
+
+#loading first file in the string vector
+npo <- read.csv( these[1], stringsAsFactors=F )
+
+#compiling all Results into one
+for( i in 2:length(these) )
+  {
+  d <- read.csv( these[i], stringsAsFactors=F )
+  npo <- bind_rows( npo, d )
+  }
+
+#saving compiled geocodes
+saveRDS( npo, "../../../NPOAddresses_censusGEO.rds" )
+setwd(wd)
+```
+
+
+## 3.4 Integrating results to main NPO address file
+
+Loading files to integrate
+```{r}
+# results
+npo <- readRDS("Data/3_GeoCensus/NPOAddresses_censusGEO.rds")
+
+#removind the IDs and pob.
+npo <- npo[,-c(1,3)]
+
+# main
+npo.main <- readRDS("Data/2_InputData/NONPROFITS-2014-2019v2.rds") 
+```
+
+Joining to NPO file
+```{r}
+npo.main <- left_join(npo.main, npo, by = "input_address")
+```
+
+Adding a geocode_type variable to all Match cases
+```{r}
+npo.main$geocode_type <- NA
+
+# Adding a value to all Match values yielded in the process
+x <- which(npo.main$match %in% "Match")
+npo.main$geocode_type[x] <- "census"
+pander(table(npo.main$geocode_type, useNA = "ifany"))
+```
+
+Renaming the lat lon vars to make sure we know they come from the census
+```{r}
+x <- which(names(npo.main) %in% "lon") 
+names(npo.main)[x] <- "lon_cen"
+
+x <- which(names(npo.main) %in% "lat") 
+names(npo.main)[x] <- "lat_cen"
+
+x <- which(names(npo.main) %in% "lat_lon") 
+names(npo.main)[x] <- "lat_lon_cen"
+```
+
+Saving the new version of the npo.main file
+```{r}
+saveRDS(npo.main, "Data/3_GeoCensus/NONPROFITS-2014-2019v3.rds") 
+```
+
+## 3.5 Exploring NPO Geocode Results
+
+Lets take a look at the geolocations of our Nonprofits:
+```{r}
+# uploading the file in case needed
+# npo.main <- readRDS("Data/3_GeoCensus/NONPROFITS-2014-2019v3.rds") 
+
+plot( npo.main$lon_cen, npo.main$lat_cen, pch=19, cex=0.5, col=gray(0.5,0.01))
+```
+
+Summary of geocode (all):
+
+There are `r nrow(npo.main)` NPO listed.
+with `r length(unique(npo.main$input_address))` unique addresses
+
+```{r}
+#Summary
+x <- table(npo.main$match, useNA = "always")
+y <- prop.table(table(npo.main$match, useNA = "always"))
+
+summary <- as.data.frame(t(rbind(x,y)))
+colnames(summary) <- c("frequency", "percent")
+summary$percent <- summary$percent*100
+summary[nrow(summary)+1,] <- c(sum(summary$frequency), 100)
+rownames(summary)[nrow(summary)] <- "TOTAL"
+pander(summary)
+
+```
+
+The following numbers of POBs
+```{r}
+x <- round(prop.table(table(npo.main$pob, useNA = "ifany"))*100,1)
+names(x) <- c("Non-POB", "POB")
+pander(x)
+```
+
+Summary of geocode excluding POBs:
+```{r}
+x <- which(npo.main$pob == 0)
+npo.main1 <- npo.main[x,]
+
+#Summary
+x <- table(npo.main1$match, useNA = "always")
+y <- prop.table(table(npo.main1$match, useNA = "always"))
+
+summary <- as.data.frame(t(rbind(x,y)))
+colnames(summary) <- c("frequency", "percent")
+summary$percent <- summary$percent*100
+summary[nrow(summary)+1,] <- c(sum(summary$frequency), 100)
+rownames(summary)[nrow(summary)] <- "TOTAL"
+pander(summary)
+
+```
+
+Summary of geocode for only POBs:
+```{r}
+x <- which(npo.main$pob == 1)
+npo.main2 <- npo.main[x,]
+
+#Summary
+x <- table(npo.main2$match, useNA = "always")
+y <- prop.table(table(npo.main2$match, useNA = "always"))
+
+summary <- as.data.frame(t(rbind(x,y)))
+colnames(summary) <- c("frequency", "percent")
+summary$percent <- summary$percent*100
+summary[nrow(summary)+1,] <- c(sum(summary$frequency), 100)
+rownames(summary)[nrow(summary)] <- "TOTAL"
+pander(summary)
+
+```
+
+
+# 4. Geocoding Board Member (PPL) addresses
+
+Uploading the file **PPLAddresses_census.rds**
+```{r, eval=FALSE}
+ppl <- readRDS( "Data/3_GeoCensus/PPLAddresses_census.rds" )
+```
+
+## 4.1 Dividing the addresses in batches of 500 each 
+```{r,eval=FALSE}
+# Create the folders to hold geocoding results if needed:
+# dir.create( "Data/3_GeoCensus/addresses_ppl")
+# dir.create( "Data/3_GeoCensus/addresses_ppl/2014-2019")
+
+#setting wd 
+wd2 <- paste0(wd, "/Data/3_GeoCensus/addresses_ppl/2014-2019")
+setwd(wd2)
+
+# Selecting only essential variables
+ppl <- select( ppl, ID, Address, City, State, Zip )
+
+# we remove colnames because input file should not have names
+names( ppl ) <- NULL  
+
+# Spliting address files into files with 500 addresses each
+loops <- ceiling( nrow( ppl ) / 500 ) # ceiling function rounds up an integer. so loops has the amount of 500s that fit rounded up.
+
+# loop to extract by addressess in 500 batches
+for( i in 1:loops )
+  {
+  filename <- paste0( "AddressPPL",i,".csv" )
+  start.row <- ((i-1)*500+1) # i starts in 1 and this outputs: 1, 501, 1001, etc.
+  end.row <- (500*i) # this outputs 500, 1000, etc.
+  if( nrow(ppl) < end.row ){ end.row <- nrow(ppl) } # this tells the loop when to stop
+
+  # writing a line in the csv address file.
+  write.csv( ppl[ start.row:end.row, ], filename, row.names=F )
+
+  # output to help keep track of the loop.
+  print( i )
+  print( paste( "Start Row:", start.row ) )
+  print( paste( "End Row:", end.row ) )
+} # end of loop.
+
+setwd(wd)
+```
+
+## 4.2 Geocoding PPL addresses
+
+Passing the addresses files produced through the census geocode srvice. This will output the following per each address file: 
+
+* **Rresults[i].csv**, with raw geocode results and 
+* **RresultsPPL[i].csv**, wich has the same data but with splitted lat/lon fields. 
+
+In addition, a **Geocode_Log.txt** will be created for the whole process.
+
+**Note:** Geocoding this amount of addresses will take significant hours. From our experience geocoding 1000 addresess took XXXX. ADD WHAT TO DO IF PROCESS HALTS IN THE MIDDLE
+
+```{r, eval=FALSE}
+# create a folder for ppl census geocoding files if needed:
+# dir.create( "Data/3_GeoCensus/addresses_ppl/2014-2019/Results" )
+
+# setting wd
+wd2 <- paste0(wd, "/Data/3_GeoCensus/addresses_ppl/2014-2019")
+setwd(wd2)
+
+# producing LOG file
+log <- c("Query_Number", "Start_time", "Time_taken")
+log <- paste(log, collapse=',')
+log.name <- as.character(Sys.time())
+log.name <- gsub(":","-",log.name)
+log.name <- gsub(" ","-",log.name)
+log.name <- paste0("Results/Geocode_Log_",log.name,".txt")
+write(log, file=log.name, append = F)
+
+#Geocoding loop:
+for( i in 1:loops )
+  { 
+  #creating the objects that will be used in each iteration of the loop: file name of addresses and api
+  addressFile <- paste0( "AddressPPL",i,".csv" ) 
+  apiurl <- "https://geocoding.geo.census.gov/geocoder/geographies/addressbatch"
+
+  #outputs in console to track loop
+  print( i )
+  print(Sys.time() )
+  start_time <- Sys.time()
+  
+  #Geocode query for i. Query is wrapped with try function to allow error-recovery
+  try( 
+    resp <- POST( apiurl, 
+                  body=list(addressFile=upload_file(addressFile),
+                            benchmark="Public_AR_Census2010",
+                            vintage="Census2010_Census2010",
+                            returntype="csv" ), 
+                            encode="multipart" )
+    )
+
+  #documenting ending times
+  end_time <- Sys.time()
+  print( end_time - start_time ) #ouputting in R console
+
+  #writing a line in the log file after query i ends
+  query <- as.character(i)
+  len <- as.character(end_time - start_time)
+  start_time <- as.character(start_time)
+  log <- c(query, start_time, len)
+  log <- paste(log, collapse=',')
+  write(log, file=log.name, append = T)
+
+  #constructing the Results[i].csv filename.
+  addressFile2 <- paste0( "Results/Results",i,".csv" ) 
+
+  #creating column names to include in the results csv file
+  var_names <- c( "id", "input_address",
+                  "match", "match_type", 
+                  "out_address", "lat_lon", 
+                  "tiger_line_id", "tiger_line_side", 
+                  "state_fips", "county_fips", 
+                 "tract_fips", "block_fips" )
+  v.names <- paste(var_names, collapse=',')
+  
+  #writing Rresults[i].csv, including headers
+  writeLines( text=c(v.names, content(resp)) , con=addressFile2 )
+
+  #reading file
+  res <- read.csv( addressFile2, header=T, 
+                 stringsAsFactors=F, 
+                 colClasses="character" )
+
+  # Splitting latitude and longitude values from results (res) to a variable (lat.lon)
+  lat.lon <- strsplit( res$lat_lon, "," )
+  
+  #adding NAs to lat.lon empty fields
+  for( j in 1:length(lat.lon) )
+    {
+    if( length( lat.lon[[j]] ) < 2 )
+      lat.lon[[ j ]] <- c(NA,NA)
+    }
+  
+  #tranforming the splitted lat.lons to columns that can be binded to a dataframe
+  m <- matrix( unlist( lat.lon ), ncol=2, byrow=T )
+  colnames(m) <- c("lon","lat")
+  m <- as.data.frame( m )
+  
+  #Adding lat and lon values to raw results and writing ResultsPPL[i].csv file
+  res <- cbind( res, m )
+  write.csv( res, paste0("Results/ResultsPPL",i,".csv"), row.names=F )
+  
+  } # end of loop
+
+# setting back wd
+setwd(wd)
+```
+
+## 4.3 Combining Result Files
+
+This code chunk compiles all results and saves them into **PPLAddresses_censusGEO.rds**.
+```{r, eval=FALSE}
+# setting wd
+wd2 <- paste0(wd, "/Data/3_GeoCensus/addresses_ppl/2014-2019/Results")
+setwd(wd2)
+
+#capturing filenames of all elements in dir() that have "Resultsppl"
+x <- grepl("ResultsPPL", dir()) 
+these <- (dir())[x]
+
+#loading first file in the string vector
+ppl <- read.csv( these[1], stringsAsFactors=F )
+
+#compiling all Results into one
+for( i in 2:length(these) )
+  {
+  d <- read.csv( these[i], stringsAsFactors=F )
+  ppl <- bind_rows( ppl, d )
+  }
+
+#saving compiled geocodes
+saveRDS( ppl, "../../PPLAddresses_censusGEO.rds" )
+setwd(wd)
+```
+
+## 4.4 Integrating results to PPL main file
+
+Loading files to integrate
+```{r}
+# results
+ppl <- readRDS("Data/3_GeoCensus/PPLAddresses_censusGEO.rds")
+ppl <- ppl[,-c(1,3)]
+
+# main
+ppl.main <- readRDS("Data/2_InputData/PEOPLE-2014-2019v2.rds")
+```
+
+Joining files
+```{r}
+ppl.main <- left_join(ppl.main, ppl, by = "input_address")
+```
+
+Adding a geocode_type variable to all Match results
+```{r}
+ppl.main$geocode_type <- NA
+
+# Adding a value to all Matches yielded in the process
+x <- which(ppl.main$match %in% "Match")
+ppl.main$geocode_type[x] <- "census"
+pander(table(ppl.main$geocode_type, useNA = "ifany"))
+```
+
+Renaming the lat lon vars to make sure we know they come from the census
+```{r}
+x <- which(names(ppl.main) %in% "lon") 
+names(ppl.main)[x] <- "lon_cen"
+
+x <- which(names(ppl.main) %in% "lat") 
+names(ppl.main)[x] <- "lat_cen"
+
+x <- which(names(ppl.main) %in% "lat_lon") 
+names(ppl.main)[x] <- "lat_lon_cen"
+```
+
+Saving the new version of the ppl.main file
+```{r}
+saveRDS(ppl.main, "Data/3_GeoCensus/PEOPLE-2014-2019v3.rds")
+```
+
+
+## 4.5 Exploring PPL Geocode Results
+
+Lets take a look at the geolocations of our Board Members:
+```{r}
+# read in file if necessary
+# ppl.main <- readRDS("Data/3_GeoCensus/PEOPLE-2014-2019v3.rds")
+
+# plotting data
+plot( ppl.main$lon_cen, ppl.main$lat_cen, pch=19, cex=0.5, col=gray(0.5,0.01))
+```
+
+Summary of geocoding process
+
+There are `r nrow(ppl.main)` NPO listed.
+with `r length(unique(ppl.main$input_address))` unique addresses
+
+```{r}
+#Summary
+x <- table(ppl.main$match, useNA = "always")
+y <- prop.table(table(ppl.main$match, useNA = "always"))
+
+summary <- as.data.frame(t(rbind(x,y)))
+colnames(summary) <- c("frequency", "percent")
+summary$percent <- summary$percent*100
+summary[nrow(summary)+1,] <- c(sum(summary$frequency), 100)
+rownames(summary)[nrow(summary)] <- "TOTAL"
+pander(summary)
+
+```
+
+The following numbers of POBs
+```{r}
+x <- round(prop.table(table(ppl.main$pob, useNA = "ifany"))*100,1)
+names(x) <- c("Non-POB", "POB")
+pander(x)
+```
+
+Summary of geocoding process excluding POBs:
+```{r}
+x <- which(ppl.main$pob == 0)
+ppl.main1 <- ppl.main[x,]
+
+#Summary
+x <- table(ppl.main1$match, useNA = "always")
+y <- prop.table(table(ppl.main1$match, useNA = "always"))
+
+summary <- as.data.frame(t(rbind(x,y)))
+colnames(summary) <- c("frequency", "percent")
+summary$percent <- summary$percent*100
+summary[nrow(summary)+1,] <- c(sum(summary$frequency), 100)
+rownames(summary)[nrow(summary)] <- "TOTAL"
+pander(summary)
+
+```
+
+Summary of geocoding process for only POBs:
+```{r}
+x <- which(ppl.main$pob == 1)
+ppl.main2 <- ppl.main[x,]
+
+#Summary
+x <- table(ppl.main2$match, useNA = "always")
+y <- prop.table(table(ppl.main2$match, useNA = "always"))
+
+summary <- as.data.frame(t(rbind(x,y)))
+colnames(summary) <- c("frequency", "percent")
+summary$percent <- summary$percent*100
+summary[nrow(summary)+1,] <- c(sum(summary$frequency), 100)
+rownames(summary)[nrow(summary)] <- "TOTAL"
+pander(summary)
+
+```
+
+
+# 5. Troubleshooting
+
+In the case a geocode process is aborted before finishing, you might need to geocode the process again. The code below helps to compile all geocode results into one.
+
+ADD examples...
+
+
