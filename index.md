@@ -46,11 +46,11 @@ li {
   font-family: sans-serif, "Helvetica Neue", "Lucida Grande", Arial; 
   }
   
-ul {
-		list-style: none;
+li {
+  list-style: none;
 }
 
-ul li:before {
-		content: "\00BB";
+li::before {
+  content: "\00BB"; 
 }
 </style>
