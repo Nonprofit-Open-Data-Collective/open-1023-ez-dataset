@@ -41,16 +41,14 @@ VIEW CODE ON GITHUB</a>
 
 
 <style>
-li { 
-  font-size: 20px;
-  font-family: sans-serif, "Helvetica Neue", "Lucida Grande", Arial; 
-  }
   
 li {
   list-style: none;
+  font-size: 20px;
+  font-family: sans-serif, "Helvetica Neue", "Lucida Grande", Arial;
 }
 
-li::before {
+li:before {
   content: "\00BB"; 
 }
 </style>
