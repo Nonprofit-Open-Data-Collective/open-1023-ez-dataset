@@ -43,12 +43,8 @@ VIEW CODE ON GITHUB</a>
 <style>
   
 li {
-  list-style: none;
   font-size: 20px;
   font-family: sans-serif, "Helvetica Neue", "Lucida Grande", Arial;
 }
 
-li:before {
-  content: "\00BB"; 
-}
 </style>
