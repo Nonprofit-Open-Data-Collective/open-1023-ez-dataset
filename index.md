@@ -4,7 +4,7 @@
 
 ## Data Processing Steps for Creating the Open 1023-EZ Dataset
 
-(1)  [<i class="fa fa-file-code"></i> Step 01](Step-01-ProcessRawData.html):  Wrangle Raw Data
+(1) <i class="far fa-file-code"></i>[<i class="far fa-file-code"></i> Step 01](Step-01-ProcessRawData.html):  Wrangle Raw Data
 
 (2) [Step 02](Step-02-POBsandGaps.html): Identifying Post Office Box Addresses
 
@@ -20,7 +20,8 @@
 
 (8) [Step 08](Step-08-ProcessReport.html): Processing Report
 
-<li><a href="Step-01-ProcessRawData.html"><i class='fa fa-home'></i> Home</a></li>
+
+<a href="https://github.com/Nonprofit-Open-Data-Collective/open-1023-ez-dataset"><i class="fab fa-github-2x"></i></i>CODE ON GITHUB</a></li>
 
 
 <style>
