@@ -51,6 +51,6 @@ ul {
 }
 
 ul li:before {
-		content: "\00BB \0020";
+		content: "\00BB";
 }
 </style>
