@@ -6,7 +6,7 @@
 
 <br>
 
-(1) <i class="fa fa-file-code"></i>[<i class="far fa-file-code"></i> Step 01: [**Wrangle Raw Data**](Step-01-ProcessRawData.html)
+(1) Step 01: [**Wrangle Raw Data**](Step-01-ProcessRawData.html)
 
 (2) Step 02: [**Identifying Post Office Box Addresses**](Step-02-POBsandGaps.html)
 
@@ -26,9 +26,9 @@
 <hr>
 <br>
 
-<a href="https://github.com/Nonprofit-Open-Data-Collective/open-1023-ez-dataset"><i class="fab fa-github-2x"></i>CODE ON GITHUB</a>
+![](https://banner2.cleanpng.com/20180824/jtl/kisspng-computer-icons-logo-portable-network-graphics-clip-icons-for-free-iconza-circle-social-5b7fe46b0bac53.1999041115351082030478.jpg)
 
-<a href="https://github.com/Nonprofit-Open-Data-Collective/open-1023-ez-dataset"><i class="fa fa-home-2x"></i>CODE ON GITHUB</a>
+<center><a href="https://github.com/Nonprofit-Open-Data-Collective/open-1023-ez-dataset">VIEW CODE ON GITHUB</a></center>
 
 <br>
 <hr>
@@ -36,5 +36,8 @@
 
 
 <style>
-p { font-size: 20px }
+p { 
+  font-size: 20px;
+  font-family: sans-serif, "Helvetica Neue", "Lucida Grande", Arial; 
+  }
 </style>
