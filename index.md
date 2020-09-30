@@ -28,7 +28,7 @@
 
 <center>
   
-![](https://banner2.cleanpng.com/20180824/jtl/kisspng-computer-icons-logo-portable-network-graphics-clip-icons-for-free-iconza-circle-social-5b7fe46b0bac53.1999041115351082030478.jpg | width=200 )
+![](https://www.iconfinder.com/data/icons/social-media-logos-7/64/github-512.png | width=200 )
 
 <a href="https://github.com/Nonprofit-Open-Data-Collective/open-1023-ez-dataset">VIEW CODE ON GITHUB</a>
 
