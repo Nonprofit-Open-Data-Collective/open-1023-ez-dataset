@@ -45,4 +45,12 @@ li {
   font-size: 20px;
   font-family: sans-serif, "Helvetica Neue", "Lucida Grande", Arial; 
   }
+  
+ul {
+		list-style: none;
+}
+
+ul li:before {
+		content: "\00BB \0020";
+}
 </style>
