@@ -2,9 +2,11 @@
 <link href="//maxcdn.bootstrapcdn.com/font-awesome/4.2.0/css/font-awesome.min.css" rel="stylesheet">
 </head>
 
-## Data Processing Steps for Creating the Open 1023-EZ Dataset
+## Data Processing Steps 
 
-(1) <i class="fa fa-file-code"></i>[<i class="far fa-file-code"></i> [**Step 01:  Wrangle Raw Data**](Step-01-ProcessRawData.html)
+<br>
+
+(1) <i class="fa fa-file-code"></i>[<i class="far fa-file-code"></i> Step 01: [**Wrangle Raw Data**](Step-01-ProcessRawData.html)
 
 (2) Step 02: [**Identifying Post Office Box Addresses**](Step-02-POBsandGaps.html)
 
@@ -26,7 +28,7 @@
 
 <a href="https://github.com/Nonprofit-Open-Data-Collective/open-1023-ez-dataset"><i class="fab fa-github-2x"></i>CODE ON GITHUB</a>
 
-<a href="https://github.com/Nonprofit-Open-Data-Collective/open-1023-ez-dataset"><i class="fa fa-github-2x"></i>CODE ON GITHUB</a>
+<a href="https://github.com/Nonprofit-Open-Data-Collective/open-1023-ez-dataset"><i class="fa fa-home-2x"></i>CODE ON GITHUB</a>
 
 <br>
 <hr>
