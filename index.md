@@ -20,8 +20,15 @@
 
 (8) [Step 08](Step-08-ProcessReport.html): Processing Report
 
+<br>
+<hr>
+<br>
 
-<a href="https://github.com/Nonprofit-Open-Data-Collective/open-1023-ez-dataset"><i class="fab fa-github-2x"></i></i>CODE ON GITHUB</a></li>
+<a href="https://github.com/Nonprofit-Open-Data-Collective/open-1023-ez-dataset"><i class="fab fa-github-2x"></i></i>CODE ON GITHUB</a>
+
+<br>
+<hr>
+<br>
 
 
 <style>
