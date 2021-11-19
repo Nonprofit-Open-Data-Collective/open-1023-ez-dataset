@@ -29,7 +29,7 @@
 <center>
 
 <a href="https://github.com/Nonprofit-Open-Data-Collective/open-1023-ez-dataset">
-<img src="https://www.iconfinder.com/data/icons/social-media-logos-7/64/github-512.png" width="200">
+<img src="github-icon.png" width="200">
 <br>
 VIEW CODE ON GITHUB</a>
 
