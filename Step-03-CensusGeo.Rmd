@@ -39,7 +39,7 @@ In this script we will geocode NPO and PPL addresses using the Census Bureau geo
 **NOTES**
 
 * This script includes a troubleshooting section. 
-* Geocoding can take several hours, for this reason some code chunks in this script are not evaluated. Outputs yielded from the process are loaded from stored files to ilustrate the results.
+* Geocoding can take several hours, for this reason some code chunks in this script are not evaluated. Outputs yielded from the process are loaded from stored files to illustrate the results.
 
 **PACKAGES**
 ```{r}
@@ -47,6 +47,7 @@ library( dplyr )
 library( tidyr )
 library( pander )
 library( httr )
+library( geocoder )
 
 # update the path with your working directory:
 wd <- "/Users/icps86/Dropbox/R Projects/Open_data_ignacio"
@@ -106,7 +107,7 @@ saveRDS(ppl, "Data/3_GeoCensus/PPLAddresses_census.rds")
 
 # 2. Demo: The Census Geocoding Service
 
--ADD BRIEF DESCRIPTION-
+Queries to the Census Geocoding Service will be submitted through the user-friendly `tidygecoder` package (specifically we will use the `geocode` function)
 
 Additional information about the geocoding service can be found here:
 
@@ -208,7 +209,7 @@ ppl <- readRDS( "Data/3_GeoCensus/PPLAddresses_census.rds")
 # dir.create( "Data/3_GeoCensus/demo" )
 
 # subsetting
-demo <- select( ppl, ID, Address, City, State, Zip )
+demo <- dplyr::select( ppl, ID, Address, City, State, Zip )
 x <- sample(nrow(ppl),20, replace = FALSE)
 demo <- demo[ x, ]
 rownames(demo) <- NULL
@@ -228,40 +229,21 @@ apiurl <- "https://geocoding.geo.census.gov/geocoder/geographies/addressbatch"
 addressFile <- "TestAddresses.csv"
 
 # geocode query
-resp <- POST( apiurl, 
-              body=list(addressFile=upload_file(addressFile), 
-                        benchmark="Public_AR_Census2010",
-                        vintage="Census2010_Census2010",
-                        returntype="csv" ), 
-              encode="multipart" )
+res <- addressFile %>%
+  geocode( ., street = Address, 
+           city = City, 
+           state = State,
+           postalcode = Zip, 
+           method = 'census',
+           return_type = "geographies",
+           full_results = T ) %>%
+  select( id, input_address,
+          match = match_indicator, match_type, 
+          out_address = matched_address, lat, lon = long, 
+          tiger_line_id, tiger_line_side = tiger_side, 
+          state_fips, county_fips, 
+          tract_fips = census_tract, block_fips = census_block )
 
-# Writing results in a csv using writelines function
-var_names <- c( "id", "input_address", 
-                "match", "match_type", 
-                "out_address", "lat_lon", 
-                "tiger_line_id", "tiger_line_side", 
-                "state_fips", "county_fips", 
-                "tract_fips", "block_fips" )
-var_names <- paste(var_names, collapse=',')
-writeLines( text=c(var_names, content(resp)), con="ResultsDemo.csv" )
-
-# loading the results we wrote
-res <- read.csv( "ResultsDemo.csv", header=T, stringsAsFactors=F, colClasses="character" )
-
-# Splitting Latitude and longitude coordinates
-lat.lon <- strsplit( res$lat_lon, "," )
-
-for( i in 1:length(lat.lon) )
-  {
-  if( length( lat.lon[[i]] ) < 2 )
-  lat.lon[[ i ]] <- c(NA,NA) 
-  }
-
-m <- matrix( unlist( lat.lon ), ncol=2, byrow=T )
-colnames(m) <- c("lon","lat")
-m <- as.data.frame( m )
-
-res <- cbind( res, m )
 head( res )
 
 # writing results with splitted lat lon in another file
@@ -294,7 +276,7 @@ wd2 <- paste0(wd, "/Data/3_GeoCensus/addresses_npo/2014-2019")
 setwd(wd2)
 
 # Selecting only essential variables
-npo <- select( npo, ID, Address, City, State, Zip )
+npo <- dplyr::select( npo, ID, Address, City, State, Zip )
 
 names( npo ) <- NULL  # we remove colnames because input file should not have names
 
@@ -350,79 +332,43 @@ log.name <- paste0("Results/Geocode_Log_",log.name,".txt")
 write(log, file=log.name, append = F)
 
 #Geocoding loop:
-for( i in 1:loops )
-  { 
-  #creating the objects used in each iteration of the loop: file name and api
-  addressFile <- paste0( "AddressNPO",i,".csv" ) 
-  apiurl <- "https://geocoding.geo.census.gov/geocoder/geographies/addressbatch"
-
-  #outputs in console to track loop
-  print( i )
-  print(Sys.time() )
-  start_time <- Sys.time()
+for ( i in 1:loops ){
   
-  #Geocode query for i. Query is wrapped with try function to allow error-recovery
-  try( 
-    resp <- POST( apiurl, 
-                  body=list(addressFile=upload_file(addressFile),
-                            benchmark="Public_AR_Census2010",
-                            vintage="Census2010_Census2010",
-                            returntype="csv" ), 
-                            encode="multipart" )
-    )
-
-  #documenting ending times
-  end_time <- Sys.time()
-  print( end_time - start_time ) #ouputting in R console
-
-  #writing a line in the log file after query i ends
-  query <- as.character(i)
-  len <- as.character(end_time - start_time)
-  start_time <- as.character(start_time)
-  log <- c(query, start_time, len)
-  log <- paste(log, collapse=',')
-  write(log, file=log.name, append = T)
-
-  #constructing the Results[i].csv filename.
-  addressFile2 <- paste0( "Results/Results",i,".csv" ) 
-
-  #creating column names to include in the results csv file
-  var_names <- c( "id", "input_address",
-                  "match", "match_type", 
-                  "out_address", "lat_lon", 
-                  "tiger_line_id", "tiger_line_side", 
-                  "state_fips", "county_fips", 
-                 "tract_fips", "block_fips" )
-  v.names <- paste(var_names, collapse=',')
+  # outputs in console to track progress
+  print( Sys.time( ) )
+  start_time <- Sys.time( )# document start times
   
-  #writing Rresults[i].csv, including headers
-  writeLines( text=c(v.names, content(resp)) , con=addressFile2 )
+  res<- tibble( read.csv( paste0( "AddressNPO", i, ".csv" ) ) ) %>%
+    geocode( ., street = Address, # specify key variables here appropriately
+             city = City, 
+             state = State,
+             postalcode = Zip, 
+             method = 'census',
+             return_type = "geographies",
+             full_results = T ) %>%
+    select( id, input_address,
+                    match = match_indicator, match_type, 
+                    out_address = matched_address, lat, lon = long, 
+                    tiger_line_id, tiger_line_side = tiger_side, 
+                    state_fips, county_fips, 
+                    tract_fips = census_tract, block_fips = census_block )
+  
+  write.csv( res, paste0( "Results/ResultsNPO", i, ".csv" ), row.names = F )
 
-  #reading file
-  res <- read.csv( addressFile2, header=T, 
-                 stringsAsFactors=F, 
-                 colClasses="character" )
+  end_time <- Sys.time( )# document start times
+  
+  # writing a line in the log file after query i ends
+  query <- paste0( "Batch ", as.character( i ) )
+  len <- as.character( end_time - start_time )
+  start_time <- as.character( start_time )
+  log <- c( query, start_time, len )
+  log <- paste( log, collapse = ', ' )
+  write( log, file = log.name, append = T )
+  
 
-  # Splitting latitude and longitude values from results (res) to a variable (lat.lon)
-  lat.lon <- strsplit( res$lat_lon, "," )
-  
-  #adding NAs to lat.lon empty fields
-  for( j in 1:length(lat.lon) )
-    {
-    if( length( lat.lon[[j]] ) < 2 )
-      lat.lon[[ j ]] <- c(NA,NA)
-    }
-  
-  #tranforming the splitted lat.lons to columns that can be binded to a dataframe
-  m <- matrix( unlist( lat.lon ), ncol=2, byrow=T )
-  colnames(m) <- c("lon","lat")
-  m <- as.data.frame( m )
-  
-  #Adding lat and lon values to raw results and writing ResultsNpo[i].csv file
-  res <- cbind( res, m )
-  write.csv( res, paste0("Results/ResultsNPO",i,".csv"), row.names=F )
-  
-  } # end of loop
+  print( paste0( "Batch #", i, " complete" ) ) # print iteration to keep track of loop
+
+} # end of loop
 
 # setting back wd
 setwd(wd)
@@ -593,7 +539,7 @@ wd2 <- paste0(wd, "/Data/3_GeoCensus/addresses_ppl/2014-2019")
 setwd(wd2)
 
 # Selecting only essential variables
-ppl <- select( ppl, ID, Address, City, State, Zip )
+ppl <- dplyr::select( ppl, ID, Address, City, State, Zip )
 
 # we remove colnames because input file should not have names
 names( ppl ) <- NULL  
@@ -602,21 +548,43 @@ names( ppl ) <- NULL
 loops <- ceiling( nrow( ppl ) / 500 ) # ceiling function rounds up an integer. so loops has the amount of 500s that fit rounded up.
 
 # loop to extract by addressess in 500 batches
-for( i in 1:loops )
-  {
-  filename <- paste0( "AddressPPL",i,".csv" )
-  start.row <- ((i-1)*500+1) # i starts in 1 and this outputs: 1, 501, 1001, etc.
-  end.row <- (500*i) # this outputs 500, 1000, etc.
-  if( nrow(ppl) < end.row ){ end.row <- nrow(ppl) } # this tells the loop when to stop
-
-  # writing a line in the csv address file.
-  write.csv( ppl[ start.row:end.row, ], filename, row.names=F )
-
-  # output to help keep track of the loop.
-  print( i )
-  print( paste( "Start Row:", start.row ) )
-  print( paste( "End Row:", end.row ) )
-} # end of loop.
+for ( i in 1:loops ){
+  
+  # outputs in console to track progress
+  print( Sys.time( ) )
+  start_time <- Sys.time( )# document start times
+  
+  res<- tibble( read.csv( paste0( "Addressppl", i, ".csv" ) ) ) %>%
+    geocode( ., street = Address, 
+             city = City, 
+             state = State,
+             postalcode = Zip, 
+             method = 'census',
+             return_type = "geographies",
+             full_results = T ) %>%
+    select( id, input_address,
+            match = match_indicator, match_type, 
+            out_address = matched_address, lat, lon = long, 
+            tiger_line_id, tiger_line_side = tiger_side, 
+            state_fips, county_fips, 
+            tract_fips = census_tract, block_fips = census_block )
+  
+  write.csv( res, paste0( "Results/ResultsPPL", i, ".csv" ), row.names = F )
+  
+  end_time <- Sys.time( )# document start times
+  
+  # writing a line in the log file after query i ends
+  query <- paste0( "Batch ", as.character( i ) )
+  len <- as.character( end_time - start_time )
+  start_time <- as.character( start_time )
+  log <- c( query, start_time, len )
+  log <- paste( log, collapse = ', ' )
+  write( log, file = log.name, append = T )
+  
+  
+  print( paste0( "Batch #", i, " complete" ) ) # print iteration to keep track of loop
+}
+ # end of loop.
 
 setwd(wd)
 ```
